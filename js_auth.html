@@ -81,7 +81,7 @@ function loginWithGoogle() {
       var switchBtnHtml = '<a href="' + switchAccountUrl + '" target="_top" class="qa-btn-ghost w-100 mt-2" style="justify-content:center; border-color:var(--border-2);"><i class="bi bi-arrow-left-right me-2 text-primary-c"></i>เปลี่ยนบัญชี Google ใหม่</a>';
       
       if (res.status === "success") {
-        APP.user = res; saveSession(); updateNavbar(); startIdleTimer();
+        APP.user = res; saveSession(); updateNavbar(); startIdleTimer(); startSilentProfileRefresh();
         showToast("ยินดีต้อนรับ " + res.fullName, "success");
         if (res.role === "admin") goToAdminDashboard();
         else if (res.role === "manager") goToManagerDashboard();
@@ -226,6 +226,43 @@ function handleRegistration(event){
     })
     .registerUser(data);
 }*/
+
+// Hot Reload: re-fetch user profile silently and re-render if role/status changed
+var _silentRefreshInterval = null;
+function startSilentProfileRefresh() {
+  if (_silentRefreshInterval) return;
+  _silentRefreshInterval = setInterval(function() {
+    if (!APP.user) return;
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (!res || res.status !== "success") return;
+        var prevRole = APP.user.role;
+        var prevSections = JSON.stringify(APP.user.sections || []);
+        var newRole = res.role;
+        var newSections = JSON.stringify(res.sections || []);
+        if (prevRole !== newRole || prevSections !== newSections) {
+          APP.user = res;
+          saveSession();
+          updateNavbar();
+          refreshAllData(function() {
+            if (newRole === "admin") {
+              renderAdminDashboard(); renderSectionList(); renderFormList(); loadAllUsers();
+            } else if (newRole === "manager") {
+              renderManagerDashboard();
+            } else {
+              loadUserSections();
+            }
+          });
+        }
+      })
+      .withFailureHandler(function() {})
+      .verifyGoogleWorkspaceIdentity();
+  }, 60000); // ตรวจสอบทุก 1 นาที
+}
+
+function stopSilentProfileRefresh() {
+  if (_silentRefreshInterval) { clearInterval(_silentRefreshInterval); _silentRefreshInterval = null; }
+}
 
 function checkRegPositions() {
   // ดึงรายการตำแหน่งที่ถูกติ๊ก

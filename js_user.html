@@ -182,7 +182,10 @@ function loadUserSections() {
         if (APP.sections[j].sectionId === sid && APP.sections[j].isActive) { secObj = APP.sections[j]; break; }
       }
       if (!secObj) continue;
-      var hasField = (form.fields || []).some(function(f) {
+      // form-level assignment: form.sectionId ตรงกับ section นี้
+      var formLevelMatch = form.sectionId && form.sectionId === sid;
+      // field-level: มีฟิลด์ที่ sectionIds รวม section นี้ หรือไม่ได้กำหนด section (visible to all)
+      var hasField = formLevelMatch || (form.fields || []).some(function(f) {
         if (!f.sectionIds || !f.sectionIds.length) return true;
         return f.sectionIds.indexOf(sid) >= 0;
       });
@@ -295,7 +298,9 @@ function buildFormCard(form, section) {
     ? '<button type="button" class="qa-btn-danger btn-sm" onclick="promptClearSection(this,\''+secId+'\',\''+secName+'\')"><i class="bi bi-eraser-fill me-1"></i>ล้างข้อมูล</button>'
     : "";
 
+  var isAdminView = APP.activeRole === "admin_acting_as_user";
   var visibleFields = (form.fields || []).filter(function(f) {
+    if (isAdminView) return true;
     if (!f.sectionIds || !f.sectionIds.length) return true;
     return f.sectionIds.indexOf(section.sectionId) >= 0;
   });

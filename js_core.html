@@ -463,7 +463,7 @@ function onDataLoaded() {
   populateRegisterSections();
   renderDeadlineBanner();
   var vc = document.getElementById("visit-count");
-  if (vc) vc.innerText = (APP.visits && APP.visits.today) || 0;
+  if (vc) vc.innerText = (APP.visits && APP.visits.total) || 0;
   if (APP.user && APP._dataLoaded) _routeRestore();
 }
 

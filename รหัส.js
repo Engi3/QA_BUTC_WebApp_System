@@ -403,6 +403,7 @@ function getAllSections() {
 
 function saveSection(sectionData) {
   try {
+    _clearAppCache();
     const adminEmail         = Session.getActiveUser().getEmail();
     const sheet              = ensureSheetExists("tb_sections");
     const data               = sheet.getDataRange().getValues();
@@ -450,6 +451,7 @@ function saveSection(sectionData) {
 
 function deleteSection(sectionId) {
   try {
+    _clearAppCache();
     const adminEmail = Session.getActiveUser().getEmail();
     const sheet      = ensureSheetExists("tb_sections");
     const data       = sheet.getDataRange().getValues();
@@ -505,6 +507,7 @@ function getAllForms() {
 
 function saveForm(formData) {
   try {
+    _clearAppCache();
     const adminEmail = Session.getActiveUser().getEmail();
     const sheet      = ensureSheetExists("tb_forms");
     const data       = sheet.getDataRange().getValues();
@@ -539,6 +542,7 @@ function saveForm(formData) {
 
 function deleteForm(formId) {
   try {
+    _clearAppCache();
     const adminEmail = Session.getActiveUser().getEmail();
     const sheet      = ensureSheetExists("tb_forms");
     const data       = sheet.getDataRange().getValues();
@@ -678,6 +682,7 @@ function getSystemSettings() {
 
 function saveAdminSettings(formData) {
   try {
+    _clearAppCache();
     const adminEmail         = Session.getActiveUser().getEmail();
     const sheet              = ensureSheetExists("tb_settings");
     const data               = sheet.getDataRange().getValues();
@@ -1119,6 +1124,7 @@ function exportYearDataToSheet(year) {
 }*/
 function saveThemeSettings(themeData) {
   try {
+    _clearAppCache();
     const adminEmail = Session.getActiveUser().getEmail();
     const sh = ensureSheetExists("tb_theme");
     const data = sh.getDataRange().getValues();
@@ -1276,47 +1282,79 @@ function getDashboardAnalytics(year) {
   }
 }
 
+// ── CacheService helpers ──────────────────────────────────
+function _getCache(key) {
+  try {
+    var c = CacheService.getScriptCache();
+    var v = c.get(key);
+    return v ? JSON.parse(v) : null;
+  } catch(e) { return null; }
+}
+
+function _putCache(key, data, ttl) {
+  try {
+    var c = CacheService.getScriptCache();
+    var json = JSON.stringify(data);
+    if (json.length < 95000) c.put(key, json, ttl || 300);
+  } catch(e) {}
+}
+
+function _clearAppCache() {
+  try {
+    CacheService.getScriptCache().removeAll(['app_static_data']);
+  } catch(e) {}
+}
+
 // ─────────────────────────────────────────
 // 11. LOAD ALL INITIAL DATA (Single Call)
 // ─────────────────────────────────────────
 function loadInitialData() {
   try {
     initializeDatabase();
-    const settings   = getSystemSettings();
-    const dashboard  = fetchDashboardData();
-    const sections   = getAllSections();
-    const departments = getAllDepartments(); // ✅ 1. ต้องมีบรรทัดนี้เพื่อดึงข้อมูลแผนก
-    const forms      = getAllForms();
-    const theme      = getThemeSettings();
-    const visits     = getVisitStats();
-    const iqaMapping = getIqaMappingData(); 
-    
+
+    // Always fetch fresh: dashboard and visits
+    var dashboard = fetchDashboardData();
+    var visits    = getVisitStats();
     try { recordVisit("view", "guest"); } catch(e) {}
-    
+
+    // Try cache for static data (changes only on admin saves)
+    var staticData = _getCache('app_static_data');
+    if (!staticData) {
+      staticData = {
+        settings:    getSystemSettings().data    || [],
+        sections:    getAllSections().data       || [],
+        departments: getAllDepartments().data    || [],
+        forms:       getAllForms().data          || [],
+        theme:       getThemeSettings().data     || {},
+        iqaMapping:  getIqaMappingData().data    || {}
+      };
+      _putCache('app_static_data', staticData, 300); // cache 5 min
+    }
+
     return {
-      success:   true,
-      settings:  settings.data  || [],
-      dashboard: dashboard.data || [],
-      sections:  sections.data  || [],
-      departments: departments.data || [], // ✅ 2. ต้องมีบรรทัดนี้เพื่อส่งให้หน้าเว็บ
-      forms:     forms.data     || [],
-      theme:     theme.data     || {},
-      visits:    visits,
-      iqaMapping: iqaMapping.data || {}
+      success:     true,
+      settings:    staticData.settings,
+      sections:    staticData.sections,
+      departments: staticData.departments,
+      forms:       staticData.forms,
+      theme:       staticData.theme,
+      iqaMapping:  staticData.iqaMapping,
+      dashboard:   dashboard.data || [],
+      visits:      visits
     };
   } catch(e) {
     console.error("🔥 ERROR in loadInitialData: " + e.stack);
     return {
-      success:   false,
-      message:   e.toString(),
-      settings:  [],
-      dashboard: [],
-      sections:  [],
-      departments: [], // ✅ เพิ่มตรงนี้ด้วย
-      forms:     [],
-      theme:     {},
-      visits:    { total: 0, uniqueUsers: 0, today: 0 },
-      iqaMapping: {}
+      success:     false,
+      message:     e.toString(),
+      settings:    [],
+      sections:    [],
+      departments: [],
+      forms:       [],
+      theme:       {},
+      visits:      { total: 0, uniqueUsers: 0, today: 0 },
+      iqaMapping:  {},
+      dashboard:   []
     };
   }
 }
@@ -1419,6 +1457,7 @@ function getIqaMappingData() {
 
 function saveIqaMappingData(mappingData) {
   try {
+    _clearAppCache();
     const adminEmail = Session.getActiveUser().getEmail();
     const sheet = ensureSheetExists("tb_iqa_mapping");
     const data = sheet.getDataRange().getValues();
@@ -1494,6 +1533,7 @@ function getAllDepartments() {
 
 function saveDepartment(deptData) {
   try {
+    _clearAppCache();
     const adminEmail = Session.getActiveUser().getEmail();
     const sheet      = ensureSheetExists("tb_departments");
     const data       = sheet.getDataRange().getValues();
@@ -1524,6 +1564,7 @@ function saveDepartment(deptData) {
 
 function deleteDepartment(deptId) {
   try {
+    _clearAppCache();
     const adminEmail = Session.getActiveUser().getEmail();
     const sheet = ensureSheetExists("tb_departments");
     const data = sheet.getDataRange().getValues();

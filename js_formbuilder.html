@@ -505,13 +505,18 @@ function getFormsForSection(sec) {
   if (!APP.forms) return [];
   return APP.forms.filter(function(f) {
     if (!f.isActive) return false;
+    // form-level sectionId (อาจเป็น JSON array หรือ string เดียว)
     var formSecIds = [];
     try {
       if (f.sectionId && String(f.sectionId).startsWith("[")) formSecIds = JSON.parse(f.sectionId);
-      else if (f.sectionId && f.sectionId !== "null" && f.sectionId !== "") formSecIds = [f.sectionId]; 
+      else if (f.sectionId && f.sectionId !== "null" && f.sectionId !== "") formSecIds = [f.sectionId];
     } catch(e) {}
-    if (formSecIds.length === 0) return true;
-    return formSecIds.indexOf(sec.sectionId) >= 0;
+    if (formSecIds.length > 0) return formSecIds.indexOf(sec.sectionId) >= 0;
+    // field-level: form ไม่ได้กำหนด section → ดูจาก fields
+    return (f.fields || []).some(function(field) {
+      if (!field.sectionIds || !field.sectionIds.length) return true;
+      return field.sectionIds.indexOf(sec.sectionId) >= 0;
+    });
   });
 }
 

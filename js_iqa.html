@@ -488,7 +488,20 @@ function _buildIqaPubAccordions(pages, year) {
       var secId   = "";
 
       var formObj = formId ? APP.forms.find(function(f){ return f.formId === formId; }) : null;
-      if (formObj && formObj.sectionId) secId = formObj.sectionId;
+
+      // หา secId: ลำดับ 1) form.sectionId  2) field.sectionIds[0]  3) active section ที่เห็นฟิลด์นี้
+      if (formObj && formObj.sectionId) {
+        secId = formObj.sectionId;
+      } else if (formObj && fieldKey) {
+        var fldDef = (formObj.fields || []).find(function(ff){ return ff.key === fieldKey; });
+        if (fldDef && fldDef.sectionIds && fldDef.sectionIds.length) {
+          secId = fldDef.sectionIds[0];
+        } else {
+          // field visible to all → ใช้ active section แรก
+          var firstSec = (APP.sections || []).find(function(s){ return s.isActive; });
+          if (firstSec) secId = firstSec.sectionId;
+        }
+      }
 
       var sub = (secId && year)
         ? APP.dashboard.find(function(d){ return d.sectionId === secId && String(d.year) === String(year); })
@@ -497,21 +510,22 @@ function _buildIqaPubAccordions(pages, year) {
       var valHtml = '';
       if (formId && fieldKey) {
         mappedCount++;
-        if (sub) {
+        var dataObj = {};
+        if (sub) { try { dataObj = JSON.parse(sub.dataJson || "{}"); } catch(e) {} }
+        var val = dataObj[fieldKey];
+        var hasVal = val !== undefined && val !== null && val !== "";
+        if (hasVal) {
           dataCount++;
-          var dataObj = {};
-          try { dataObj = JSON.parse(sub.dataJson || "{}"); } catch(e) {}
-          var val = dataObj[fieldKey];
           valHtml = '<div class="qa-iqa-val-mapped">'
             + '<i class="bi bi-check-circle-fill me-1"></i>'
             + '<strong>'+(formObj ? escHtml(formObj.formName) : formId)+'</strong>'
-            + (val !== undefined && val !== null ? ' — '+escHtml(String(val).substring(0,50)) : '')
+            + ' — '+escHtml(String(val).substring(0,50))
             + '</div>';
         } else {
           valHtml = '<div class="qa-iqa-val-pending">'
             + '<i class="bi bi-hourglass-split me-1"></i>'
             + (formObj ? escHtml(formObj.formName) : formId)
-            + ' — ยังไม่ส่งข้อมูล</div>';
+            + ' — ยังไม่มีข้อมูลในฟิลด์นี้</div>';
         }
       } else {
         valHtml = '<div class="qa-iqa-val-none">ยังไม่ได้ Mapping</div>';
@@ -523,11 +537,13 @@ function _buildIqaPubAccordions(pages, year) {
         + '</div>';
     });
 
-    var badge = dataCount > 0
-      ? '<span style="background:var(--success-l);color:var(--success);padding:2px 9px;border-radius:20px;font-size:.67rem;font-weight:700;flex-shrink:0;"><i class="bi bi-check-circle-fill me-1"></i>มีข้อมูล '+dataCount+'</span>'
-      : mappedCount > 0
-        ? '<span style="background:var(--warning-l);color:var(--warning);padding:2px 9px;border-radius:20px;font-size:.67rem;font-weight:700;flex-shrink:0;">Mapped '+mappedCount+'</span>'
-        : '<span style="background:var(--surface-3);color:var(--txt-muted);padding:2px 9px;border-radius:20px;font-size:.67rem;flex-shrink:0;">ยังไม่ Mapped</span>';
+    var pctFill = mappedCount > 0 ? Math.round(dataCount / mappedCount * 100) : 0;
+    var badgeColor = pctFill === 100 ? "var(--success)" : (pctFill > 0 ? "var(--warning)" : "var(--danger)");
+    var badgeBg    = pctFill === 100 ? "var(--success-l)" : (pctFill > 0 ? "var(--warning-l)" : "var(--surface-3)");
+    var badge = mappedCount > 0
+      ? '<span style="background:'+badgeBg+';color:'+badgeColor+';padding:2px 9px;border-radius:20px;font-size:.67rem;font-weight:700;flex-shrink:0;">'
+          + '<i class="bi bi-bar-chart-fill me-1"></i>'+dataCount+'/'+mappedCount+' ('+pctFill+'%)</span>'
+      : '<span style="background:var(--surface-3);color:var(--txt-muted);padding:2px 9px;border-radius:20px;font-size:.67rem;flex-shrink:0;">ยังไม่ Mapped</span>';
 
     var bodyId = "iqa-pub-body-"+pi;
     return '<div class="qa-iqa-pub-card">'

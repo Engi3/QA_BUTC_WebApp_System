@@ -60,7 +60,7 @@ function renderPublicDashboard() {
         '<div class="qa-stat-card success"><div class="qa-stat-num">' + sub + '</div><div class="qa-stat-label">ส่งข้อมูลแล้ว</div></div>' +
         '<div class="qa-stat-card warning"><div class="qa-stat-num">' + completedFields + ' / ' + totalFields + '</div><div class="qa-stat-label">ฟิลด์ที่กรอก</div></div>' +
         '<div class="qa-stat-card accent"><div class="qa-stat-num">' + pct + '%</div><div class="qa-stat-label">ความคืบหน้ารวม</div></div>' +
-        '<div class="qa-stat-card info"><div class="qa-stat-num" id="visit-count">' + ((APP.visits && APP.visits.today) || 0) + '</div><div class="qa-stat-label">ผู้เข้าชมวันนี้</div></div>';
+        '<div class="qa-stat-card info"><div class="qa-stat-num" id="visit-count">' + ((APP.visits && APP.visits.total) || 0) + '</div><div class="qa-stat-label">ผู้เข้าชมทั้งหมด</div></div>';
     }
     
     var bar = document.getElementById("public-progress-bar");
@@ -77,7 +77,8 @@ function renderPublicDashboard() {
     }
     
     renderDeadlineBanner();
-    
+    renderPublicFormProgress();
+
     // ป้องกัน IQA พัง
     try {
       var iqaPanel = document.getElementById("home-panel-iqa");
@@ -94,21 +95,78 @@ function renderPublicDashboard() {
 }
 
 function homeSelectTab(tab) {
-  var qaPanel = document.getElementById("home-panel-qa");
-  var iqaPanel = document.getElementById("home-panel-iqa");
-  var qaBtn = document.getElementById("home-tab-qa-btn");
-  var iqaBtn = document.getElementById("home-tab-iqa-btn");
-  
-  if (qaPanel)  qaPanel.style.display  = tab === "qa"  ? "block" : "none";
-  if (iqaPanel) iqaPanel.style.display = tab === "iqa" ? "block" : "none";
-  
-  if (qaBtn)  qaBtn.className = tab === "qa" ? "qa-tab-link active" : "qa-tab-link";
-  if (iqaBtn) iqaBtn.className = tab === "iqa" ? "qa-tab-link active" : "qa-tab-link";
-  
-  // โหลดหน้าจอ IQA Public View เมื่อคลิกที่แท็บ
-  if (tab === "iqa" && typeof renderIqaPublicView === "function") {
-    renderIqaPublicView();
+  var formPanel = document.getElementById("home-panel-form");
+  var qaPanel   = document.getElementById("home-panel-qa");
+  var iqaPanel  = document.getElementById("home-panel-iqa");
+  var formBtn   = document.getElementById("home-tab-form-btn");
+  var qaBtn     = document.getElementById("home-tab-qa-btn");
+  var iqaBtn    = document.getElementById("home-tab-iqa-btn");
+
+  if (formPanel) formPanel.style.display = tab === "form" ? "block" : "none";
+  if (qaPanel)   qaPanel.style.display   = tab === "qa"   ? "block" : "none";
+  if (iqaPanel)  iqaPanel.style.display  = tab === "iqa"  ? "block" : "none";
+
+  if (formBtn) formBtn.className = tab === "form" ? "qa-tab-link active" : "qa-tab-link";
+  if (qaBtn)   qaBtn.className   = tab === "qa"   ? "qa-tab-link active" : "qa-tab-link";
+  if (iqaBtn)  iqaBtn.className  = tab === "iqa"  ? "qa-tab-link active" : "qa-tab-link";
+
+  if (tab === "form") renderPublicFormProgress();
+  if (tab === "iqa" && typeof renderIqaPublicView === "function") renderIqaPublicView();
+}
+
+function renderPublicFormProgress() {
+  var yearSel = document.getElementById("public-year-select");
+  var year = yearSel ? yearSel.value : "";
+  _renderFormProgressGrid("public-form-progress-grid", year);
+}
+
+function _renderFormProgressGrid(containerId, year) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  var yearData = [];
+  (APP.dashboard || []).forEach(function(r) { if (String(r.year) === String(year)) yearData.push(r); });
+
+  var activeForms = (APP.forms || []).filter(function(f) { return f.isActive; });
+  if (!activeForms.length) {
+    el.innerHTML = '<div class="text-center text-muted py-4">ไม่มีแบบฟอร์ม</div>';
+    return;
   }
+
+  var activeSections = (APP.sections || []).filter(function(s) { return s.isActive; });
+  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">';
+  activeForms.forEach(function(form) {
+    var totalFields = 0, completedFields = 0;
+    activeSections.forEach(function(sec) {
+      var dashRow = null;
+      for (var i = 0; i < yearData.length; i++) {
+        if (yearData[i].sectionId === sec.sectionId) { dashRow = yearData[i]; break; }
+      }
+      var dataObj = {};
+      if (dashRow && dashRow.dataJson) { try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) {} }
+      (form.fields || []).forEach(function(field) {
+        if (field.type === "divider") return;
+        if (!field.sectionIds || !field.sectionIds.length || field.sectionIds.indexOf(sec.sectionId) >= 0) {
+          totalFields++;
+          var v = dataObj[field.key];
+          if (v !== undefined && v !== null && v !== "") completedFields++;
+        }
+      });
+    });
+    var pct = totalFields > 0 ? Math.round(completedFields / totalFields * 100) : 0;
+    var sColor = pct === 100 ? "var(--success)" : (pct > 0 ? "var(--warning)" : "var(--danger)");
+    html += '<div class="qa-glass-card p-3">'
+      + '<div style="font-weight:700;font-size:.9rem;color:var(--txt);margin-bottom:8px;"><i class="bi bi-file-earmark-text me-2" style="color:var(--primary);"></i>' + escHtml(form.formName) + '</div>'
+      + '<div class="progress mb-2" style="height:6px;background:var(--border-2);border-radius:3px;">'
+      +   '<div class="progress-bar" style="width:' + pct + '%;background-color:' + sColor + ';"></div>'
+      + '</div>'
+      + '<div style="font-size:.78rem;color:var(--txt-muted);display:flex;justify-content:space-between;">'
+      +   '<span>กรอกแล้ว ' + completedFields + ' / ' + totalFields + ' ฟิลด์</span>'
+      +   '<span style="color:' + sColor + ';font-weight:600;">' + pct + '%</span>'
+      + '</div>'
+      + '</div>';
+  });
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 // buildSectionCards — defined in js_user.html
@@ -288,6 +346,9 @@ function getFormsForSection(sec) {
   if (!sec) return [];
   return (APP.forms || []).filter(function(f) {
     if (!f.isActive) return false;
+    // form-level assignment
+    if (f.sectionId && f.sectionId === sec.sectionId) return true;
+    // field-level: any field visible to this section
     return (f.fields || []).some(function(field) {
       if (!field.sectionIds || !field.sectionIds.length) return true;
       return field.sectionIds.indexOf(sec.sectionId) >= 0;
@@ -600,6 +661,7 @@ function renderAdminDashboard(){
     +'<div class="qa-stat-card accent"><div class="qa-stat-num">'+pct+'%</div><div class="qa-stat-label">อัตราการส่ง</div></div>';
   buildSectionCards(active, yd, "admin-section-grid", year);
   renderAdminCharts(sub, total-sub, yd);
+  _renderFormProgressGrid("admin-form-progress-grid", year);
 }
 
 function renderAdminCharts(sub, pend, yd){
