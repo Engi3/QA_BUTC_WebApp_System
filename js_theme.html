@@ -1,0 +1,411 @@
+<script>
+// ============================================================
+// js_theme.html — Theme editor (Presets + Custom + Logo)
+// ============================================================
+
+var THEME_PRESETS = [
+  { id: "p_classic", name: "Classic Blue", primary: "#2563eb", grad: "linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #0ea5e9 100%)" },
+  { id: "p_ocean",   name: "Ocean Breeze", primary: "#0284c7", grad: "linear-gradient(135deg, #0c4a6e 0%, #0284c7 50%, #38bdf8 100%)" },
+  { id: "p_forest",  name: "Forest Green", primary: "#16a34a", grad: "linear-gradient(135deg, #064e3b 0%, #16a34a 50%, #4ade80 100%)" },
+  { id: "p_rose",    name: "Rose Pink",    primary: "#e11d48", grad: "linear-gradient(135deg, #881337 0%, #e11d48 50%, #fb7185 100%)" },
+  { id: "p_purple",  name: "Royal Purple", primary: "#9333ea", grad: "linear-gradient(135deg, #581c87 0%, #9333ea 50%, #c084fc 100%)" },
+  { id: "p_sunset",  name: "Sunset Orange",primary: "#ea580c", grad: "linear-gradient(135deg, #7c2d12 0%, #ea580c 50%, #f59e0b 100%)" },
+  { id: "p_darkred", name: "Crimson Red",  primary: "#dc2626", grad: "linear-gradient(135deg, #7f1d1d 0%, #dc2626 50%, #f87171 100%)" },
+  { id: "p_midnight",name: "Midnight Glow",primary: "#6366f1", grad: "linear-gradient(135deg, #0f172a 0%, #312e81 50%, #8b5cf6 100%)" }
+];
+
+function initThemeEditor() {
+  if (!APP.selectedTheme) APP.selectedTheme = {};
+  if (APP.theme && Object.keys(APP.theme).length > 0 && Object.keys(APP.selectedTheme).length === 0) {
+    APP.selectedTheme = Object.assign({}, APP.theme);
+  }
+
+  // 1. วาดธีมสำเร็จรูป (Presets)
+  renderThemePresets();
+
+  // 2. วาดส่วนเลือกสีหลัก (Custom Primary)
+  var ps = document.getElementById("primary-swatches");
+  if (ps) ps.innerHTML = THEME_PRIMARIES.map(function(h){
+    return '<div class="qa-color-swatch '+(APP.selectedTheme.primary===h?"active":"")+'" style="background:'+h+'" onclick="selectPrimaryColor(\''+h+'\')" title="'+h+'"></div>';
+  }).join("");
+
+  // 3. วาดส่วนเลือก Gradient
+  _renderGradientGrid();
+  _initGradBuilder();
+
+  // 4. อื่นๆ
+  initLogoUploader();
+  updateThemePreview();
+
+  var cur = document.documentElement.getAttribute("data-theme") || "light";
+  var lm = document.getElementById("btn-light-mode");
+  var dm = document.getElementById("btn-dark-mode");
+  if (lm) lm.classList.toggle("active", cur==="light");
+  if (dm) dm.classList.toggle("active", cur==="dark");
+}
+
+function renderThemePresets() {
+  var container = document.getElementById("theme-preset-grid");
+  if (!container) return;
+  var html = THEME_PRESETS.map(function(p) {
+    var isActive = APP.selectedTheme.gradientId === p.id;
+    return '<div class="qa-preset-card '+(isActive?'active':'')+'" onclick="selectPreset(\''+p.id+'\')">'
+         + '<div class="qa-preset-color-bar" style="background:'+p.grad+';"></div>'
+         + '<div class="qa-preset-info">'
+         + '<div class="qa-preset-name">'
+         + (isActive?'<i class="bi bi-check-circle-fill me-1"></i>':'') + p.name
+         + '</div></div></div>';
+  }).join("");
+  container.innerHTML = html;
+}
+
+function selectPreset(id) {
+  var preset = THEME_PRESETS.find(function(p){ return p.id === id; });
+  if (!preset) return;
+  if (!APP.selectedTheme) APP.selectedTheme = {};
+  APP.selectedTheme.gradientId = preset.id; 
+  APP.selectedTheme.primary = preset.primary;
+  APP.selectedTheme.gradientCss = preset.grad;
+  
+  applyThemeData(APP.selectedTheme);
+  
+  // อัปเดต UI ให้ตรงกันทั้งหมด
+  renderThemePresets();
+  _renderGradientGrid();
+  
+  document.querySelectorAll(".qa-color-swatch").forEach(el => {
+    el.classList.toggle("active", el.style.background === preset.primary || el.style.backgroundColor === preset.primary);
+  });
+  
+  updateThemePreview();
+}
+
+function _renderGradientGrid() {
+  var gp = document.getElementById("gradient-presets");
+  if (!gp) return;
+  gp.innerHTML = GRADIENTS.map(g => {
+    var isActive = APP.selectedTheme.gradientId === g.id;
+    var bgStyle = g.g || "var(--surface-3)";
+    return '<div onclick="selectGradient(\''+g.id+'\')" title="'+g.l+'"'
+      +' class="qa-gradient-option '+(isActive?"active":"")+'"'
+      +' style="background:'+bgStyle+';">'
+      +'<span class="qa-gradient-label">'+g.l+'</span>'
+      +(isActive?'<i class="bi bi-check-circle-fill qa-gradient-check"></i>':"")
+      +'</div>';
+  }).join("");
+}
+
+function selectGradient(id) {
+  var g = GRADIENTS.find(x => x.id === id);
+  if (!g) return;
+  if (!APP.selectedTheme) APP.selectedTheme = {};
+  APP.selectedTheme.gradientId  = id;
+  
+  var builderSection = document.getElementById("grad-builder-section");
+  
+  if (id === "g_custom") {
+    if (builderSection) builderSection.style.display = "block";
+    showToast("กำหนด Gradient เองได้ที่ด้านล่าง", "info");
+  } else {
+    if (builderSection) builderSection.style.display = "none";
+    APP.selectedTheme.gradientCss = g.g;
+    applyThemeData(APP.selectedTheme);
+  }
+  _renderGradientGrid();
+  renderThemePresets(); // ลบสถานะ Preset ออก (เพราะเลือก custom grad)
+  updateThemePreview();
+}
+
+function selectPrimaryColor(h) {
+  if (!APP.selectedTheme) APP.selectedTheme = {};
+  APP.selectedTheme.primary = h;
+  applyThemeData(APP.selectedTheme);
+  
+  document.querySelectorAll(".qa-color-swatch").forEach(el => {
+    el.classList.toggle("active", el.style.background === h || el.style.backgroundColor === h);
+  });
+  
+  // ถ้าเปลี่ยนเฉพาะสี ให้ลบสถานะธีมสำเร็จรูปออก
+  if (APP.selectedTheme.gradientId && APP.selectedTheme.gradientId.startsWith("p_")) {
+      APP.selectedTheme.gradientId = "custom";
+      renderThemePresets();
+  }
+  updateThemePreview();
+}
+
+function selectCustomPrimaryColor(hex) {
+  if (!APP.selectedTheme) APP.selectedTheme = {};
+  APP.selectedTheme.primary = hex;
+  applyThemeData(APP.selectedTheme);
+  
+  document.querySelectorAll(".qa-color-swatch").forEach(el => el.classList.remove("active"));
+  if (APP.selectedTheme.gradientId && APP.selectedTheme.gradientId.startsWith("p_")) {
+      APP.selectedTheme.gradientId = "custom";
+      renderThemePresets();
+  }
+  updateThemePreview();
+}
+
+function _initGradBuilder() {
+  _renderGradStops();
+  var dirs = [["135deg","↘ 135°"],["90deg","↓ 90°"],["45deg","↗ 45°"],["180deg","↓↓ 180°"],["0deg","↑ 0°"],["225deg","↙ 225°"]];
+  var dirEl = document.getElementById("grad-dir-btns");
+  if (dirEl) dirEl.innerHTML = dirs.map(([d,l]) => '<button type="button" class="qa-grad-dir-btn '+(APP.gradDir===d?"active":"")+'" onclick="setGradDir(\''+(d)+'\')">'+(l)+'</button>').join("");
+  document.querySelectorAll(".qa-grad-type-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.gradType === APP.gradType);
+  });
+  _updateGradPreview();
+}
+
+function _renderGradStops() {
+  var el = document.getElementById("grad-stops-list");
+  if (!el) return;
+  el.innerHTML = APP.gradStops.map(function(s,i){
+    return '<div class="qa-grad-stop">'
+      +'<span class="qa-grad-stop-num">'+(i+1)+'</span>'
+      +'<div class="qa-grad-color-btn" style="background:'+s.color+';" title="คลิกเพื่อเลือกสี">'
+      +'<input type="color" class="qa-grad-color-input" value="'+s.color+'" oninput="updateGradStop('+i+',\'color\',this.value)" onchange="updateGradStop('+i+',\'color\',this.value)"></div>'
+      +'<input type="number" class="qa-input qa-grad-pct" value="'+s.pct+'" min="0" max="100" oninput="updateGradStop('+i+',\'pct\',this.value)" placeholder="%">'
+      +'<span style="color:var(--txt-muted);font-size:.8rem;">%</span>'
+      +(APP.gradStops.length>2?'<button type="button" class="qa-btn-danger btn-xs" onclick="removeGradStop('+i+')"><i class="bi bi-x"></i></button>':"")
+      +'</div>';
+  }).join("");
+}
+
+function updateGradStop(idx, key, val) {
+  if (!APP.gradStops[idx]) return;
+  APP.gradStops[idx][key] = key === "pct" ? parseInt(val)||0 : val;
+  if (key === "color") {
+    var btn = document.querySelectorAll(".qa-grad-color-btn")[idx];
+    if (btn) btn.style.background = val;
+  }
+  _updateGradPreview();
+}
+
+function addGradStop() {
+  var last = APP.gradStops[APP.gradStops.length - 1];
+  APP.gradStops.push({ color: last.color || "#ffffff", pct: Math.min(100, (last.pct || 80) + 10) });
+  _renderGradStops();
+  _updateGradPreview();
+}
+
+function removeGradStop(idx) {
+  if (APP.gradStops.length <= 2) return;
+  APP.gradStops.splice(idx, 1);
+  _renderGradStops();
+  _updateGradPreview();
+}
+
+function setGradDir(dir) {
+  APP.gradDir = dir;
+  document.querySelectorAll(".qa-grad-dir-btn").forEach(function(b){ b.classList.toggle("active", b.getAttribute("onclick") && b.getAttribute("onclick").indexOf("'"+dir+"'") >= 0); });
+  _initGradBuilder();
+  _updateGradPreview();
+}
+
+function setGradType(type) {
+  APP.gradType = type;
+  document.querySelectorAll(".qa-grad-type-btn").forEach(b => b.classList.toggle("active", b.dataset.gradType === type));
+  _updateGradPreview();
+}
+
+function _updateGradPreview() {
+  var css = _buildGradientCSS();
+  var prev = document.getElementById("grad-builder-preview");
+  if (prev) prev.style.background = css;
+}
+
+function applyCustomGradient() {
+  var css = _buildGradientCSS();
+  if (!APP.selectedTheme) APP.selectedTheme = {};
+  APP.selectedTheme.gradientId  = "g_custom";
+  APP.selectedTheme.gradientCss = css;
+  applyThemeData(APP.selectedTheme);
+  _renderGradientGrid();
+  renderThemePresets();
+  updateThemePreview();
+  showToast("ใช้ Gradient นี้แล้ว","success");
+}
+
+function _buildGradientCSS() {
+  var stops = APP.gradStops;
+  var stopStr = stops.map(function(s){return s.color+" "+s.pct+"%";}).join(", ");
+  if (APP.gradType === "radial") {
+    return "radial-gradient(ellipse at center, "+stopStr+")";
+  }
+  return "linear-gradient("+APP.gradDir+", "+stopStr+")";
+}
+
+function updateThemePreview() {
+  var box = document.getElementById("theme-preview-box");
+  if (!box) return;
+  var g = APP.selectedTheme.gradientCss || "linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #0ea5e9 100%)";
+  var p = APP.selectedTheme.primary || "#2563eb";
+  box.style.background = g;
+  box.innerHTML = '<div style="height:100%;display:flex;align-items:center;padding:0 16px;gap:10px;"><div style="width:28px;height:28px;border-radius:7px;background:'+p+';"></div><div><div style="font-weight:700;color:white;font-size:.84rem;">QA BUTC System</div><div style="color:rgba(255,255,255,.7);font-size:.7rem;">ตัวอย่างธีม</div></div></div>';
+}
+
+function saveTheme() {
+  var btn = document.querySelector('[onclick="saveTheme()"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...'; }
+  
+  if (!APP.selectedTheme) APP.selectedTheme = {};
+  var nameEl = document.getElementById("input-college-name");
+  if (nameEl) {
+    APP.selectedTheme.collegeName = nameEl.value.trim();
+  }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึกธีม'; }
+      if (res && res.success) {
+        showToast("บันทึกธีมสำเร็จ — ผู้ใช้ทุกคนจะเห็นธีมใหม่เมื่อ Reload", "success");
+        try { localStorage.setItem("qa_server_theme", JSON.stringify(APP.selectedTheme || {})); } catch(e) {}
+        applyThemeData(APP.selectedTheme || {});
+        var navName = document.getElementById("nav-college-name");
+        if (navName) navName.innerText = APP.selectedTheme.collegeName || "ระบบประกันคุณภาพการศึกษา";
+      } else showToast((res && res.message) || "เกิดข้อผิดพลาด", "danger");
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึกธีม'; }
+      showToast(err.message||err, "danger");
+    })
+    .saveThemeSettings(APP.selectedTheme || {});
+}
+
+function initLogoUploader() {
+  var t = APP.selectedTheme || APP.theme || {};
+  var nameEl = document.getElementById("input-college-name");
+  if (nameEl && t.collegeName) nameEl.value = t.collegeName;
+  _renderLogoPreview(t.logoUrl || "");
+}
+
+function _renderLogoPreview(url) {
+  var box = document.getElementById("logo-preview-area");
+  if (!box) return;
+  if (url) {
+    box.innerHTML = '<div class="qa-logo-preview-box">'
+      + '<img src="' + escHtml(url) + '" alt="โลโก้วิทยาลัย" onerror="this.src=\'\';this.style.display=\'none\'">'
+      + '<div style="flex:1;">'
+      + '<div class="fw-700" style="font-size:.88rem;">โลโก้ปัจจุบัน</div>'
+      + '<div style="font-size:.75rem;color:var(--txt-muted);margin-top:3px;word-break:break-all;">' + escHtml(url.substring(0,60)) + '...</div>'
+      + '</div>'
+      + '<button type="button" class="qa-btn-danger btn-sm" onclick="deleteLogo()">'
+      + '<i class="bi bi-trash-fill me-1"></i>ลบโลโก้</button>'
+      + '</div>';
+  } else {
+    box.innerHTML = '<div class="qa-alert qa-alert-info" style="margin-top:8px;">'
+      + '<i class="bi bi-image"></i><span>ยังไม่มีโลโก้ — อัปโหลดไฟล์ด้านบน</span></div>';
+  }
+}
+
+function handleLogoFileSelect(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var maxMB = 2;
+  if (file.size > maxMB * 1024 * 1024) { showToast("ไฟล์ใหญ่เกิน " + maxMB + "MB", "warning"); return; }
+  var allowed = ["image/png","image/jpeg","image/gif","image/webp","image/svg+xml"];
+  if (!allowed.includes(file.type)) { showToast("รองรับเฉพาะ PNG, JPG, GIF, WebP, SVG", "warning"); return; }
+
+  var statusEl = document.getElementById("logo-upload-status");
+  if (statusEl) statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> กำลังประมวลผลและบีบอัดรูปภาพ...';
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var img = new Image();
+    img.onload = function() {
+      var canvas = document.createElement("canvas");
+      var maxW = 250, maxH = 250; 
+      var w = img.width, h = img.height;
+      if (w > maxW || h > maxH) {
+        var scale = Math.min(maxW/w, maxH/h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      canvas.width = w; 
+      canvas.height = h;
+      var ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      var compressedDataUrl = canvas.toDataURL("image/webp", 0.8); 
+      
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (statusEl) statusEl.innerHTML = "";
+          if (res && res.success) {
+            showToast("อัปโหลดโลโก้สำเร็จ!", "success");
+            if (!APP.selectedTheme) APP.selectedTheme = {};
+            APP.selectedTheme.logoUrl    = res.url;
+            APP.selectedTheme.logoFileId = "base64_embedded";
+            
+            _applyLogoToNavbar(res.url);
+            _renderLogoPreview(res.url);
+            try { localStorage.setItem("qa_server_theme", JSON.stringify(APP.selectedTheme)); } catch(ex) {}
+          } else {
+            showToast((res && res.message) || "อัปโหลดไม่สำเร็จ", "danger");
+          }
+        })
+        .withFailureHandler(function(err) {
+          if (statusEl) statusEl.innerHTML = "";
+          showToast(err.message||err, "danger");
+        })
+        .saveBase64Logo(compressedDataUrl);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function deleteLogo() {
+  if (!confirm("ลบโลโก้วิทยาลัยออก?")) return;
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.success) {
+        showToast("ลบโลโก้สำเร็จ", "success");
+        if (APP.selectedTheme) { APP.selectedTheme.logoUrl = ""; APP.selectedTheme.logoFileId = ""; }
+        _applyLogoToNavbar("");
+        _renderLogoPreview("");
+        try { localStorage.setItem("qa_server_theme", JSON.stringify(APP.selectedTheme||{})); } catch(e) {}
+      } else showToast((res && res.message)||"เกิดข้อผิดพลาด","danger");
+    })
+    .withFailureHandler(function(err){ showToast(err.message||err,"danger"); })
+    .deleteLogoImage();
+}
+
+function previewCollegeName(val) {
+  var navName = document.getElementById("nav-college-name");
+  if (navName) {
+    navName.innerText = val.trim() || "ระบบประกันคุณภาพการศึกษา";
+  }
+  if (!APP.selectedTheme) APP.selectedTheme = {};
+  APP.selectedTheme.collegeName = val.trim();
+}
+
+function saveCollegeName() {
+  var nameEl = document.getElementById("input-college-name");
+  if (!nameEl) return;
+  var newName = nameEl.value.trim();
+  var btn = document.querySelector('[onclick="saveCollegeName()"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+
+  if (!APP.selectedTheme) APP.selectedTheme = Object.assign({}, APP.theme || {});
+  APP.selectedTheme.collegeName = newName;
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึก'; }
+      if (res && res.success) {
+        showToast("บันทึกชื่อสถานศึกษาสำเร็จ", "success");
+        var navName = document.getElementById("nav-college-name");
+        if (navName) navName.innerText = newName || "ระบบประกันคุณภาพการศึกษา";
+        try { localStorage.setItem("qa_server_theme", JSON.stringify(APP.selectedTheme)); } catch(e) {}
+      } else {
+        showToast((res && res.message) || "เกิดข้อผิดพลาด", "danger");
+      }
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึก'; }
+      showToast(err.message || err, "danger");
+    })
+    .saveThemeSettings({ collegeName: newName });
+}
+</script>

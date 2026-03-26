@@ -1,0 +1,636 @@
+<script>
+// ============================================================
+// js_admin.html — Admin CRUD (FIXED: no template literals,
+//   no arrow-fn destructuring, no '' quote delimiters,
+//   uses data-* + event delegation for onclick callbacks)
+// ============================================================
+
+// ── Modal close helpers ───────────────────────────────────────
+function _closeIconPicker()  { var e=document.getElementById("icon-picker-modal");  if(e)e.remove(); }
+function _closeColorPicker() { var e=document.getElementById("color-picker-modal"); if(e)e.remove(); }
+
+// ── Icon Picker ───────────────────────────────────────────────
+// ── อัปเดต Icon & Color Picker ให้ใช้ร่วมกันได้ ───────────
+let _pickerTarget = "section"; // ตัวแปรเก็บเป้าหมายว่ากำลังแก้ Section หรือ Dept
+
+function openIconPicker(target) {
+  _pickerTarget = target || "section";
+  _closeIconPicker();
+  var icons = "";
+  for (var k=0; k<ICONS.length; k++) {
+    var ic = ICONS[k][0], lb = ICONS[k][1];
+    icons += '<div class="qa-icon-pick-item" data-icon="' + escHtml(ic) + '" style="padding:10px 4px;border:1.5px solid var(--glass-border);border-radius:8px;background:var(--glass-bg);cursor:pointer;text-align:center;font-size:.69rem;color:var(--txt-muted);transition:.18s;"><i class="bi ' + escHtml(ic) + '" style="font-size:1.3rem;display:block;margin-bottom:4px;"></i>' + escHtml(lb) + '</div>';
+  }
+  // ... (HTML กล่องเหมือนเดิม ข้ามมาตอนกดเลือก)
+  document.body.insertAdjacentHTML("beforeend", '<div id="icon-picker-modal" onclick="_iconPickerBg(event)" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;"><div onclick="event.stopPropagation();" style="background:var(--glass-bg);border:1.5px solid var(--glass-border);border-radius:16px;width:100%;max-width:560px;max-height:78vh;overflow:hidden;display:flex;flex-direction:column;"><div style="background:var(--hero-grad);color:white;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;"><i class="bi bi-grid-3x3-gap-fill me-2"></i>เลือกไอคอน</span><button type="button" onclick="_closeIconPicker()" style="background:rgba(255,255,255,.2);border:none;color:white;border-radius:50%;width:28px;height:28px;cursor:pointer;"><i class="bi bi-x"></i></button></div><div style="overflow-y:auto;padding:14px;"><div id="icon-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:7px;">' + icons + '</div></div></div></div>');
+  
+  document.getElementById("icon-grid").addEventListener("click", function(e) {
+    var item = e.target.closest(".qa-icon-pick-item"); if (item) selectIcon(item.getAttribute("data-icon"));
+  });
+}
+
+function selectIcon(icon) {
+  document.getElementById(_pickerTarget + "-icon-hidden").value = icon;
+  var p = document.getElementById(_pickerTarget + "-icon-preview");
+  if (p) p.innerHTML = '<i class="bi ' + escHtml(icon) + ' me-2"></i>' + escHtml(icon);
+  _closeIconPicker();
+}
+
+function openColorPicker(target) {
+  _pickerTarget = target || "section";
+  _closeColorPicker();
+  var cols = "";
+  for (var k=0; k<COLORS.length; k++) {
+    var c = COLORS[k];
+    cols += '<div class="qa-color-pick-item" data-val="' + escHtml(c.v) + '" data-hex="' + escHtml(c.h) + '" style="padding:10px 6px;border:2px solid transparent;border-radius:10px;background:var(--glass-bg);cursor:pointer;text-align:center;transition:.18s;"><div style="width:30px;height:30px;background:' + c.h + ';border-radius:50%;margin:0 auto 5px;"></div><div style="font-size:.71rem;font-weight:700;color:var(--txt-2);">' + escHtml(c.l) + '</div></div>';
+  }
+  document.body.insertAdjacentHTML("beforeend", '<div id="color-picker-modal" onclick="_colorPickerBg(event)" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;"><div onclick="event.stopPropagation();" style="background:var(--glass-bg);border:1.5px solid var(--glass-border);border-radius:16px;width:100%;max-width:440px;max-height:70vh;overflow:hidden;display:flex;flex-direction:column;"><div style="background:var(--hero-grad);color:white;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;"><i class="bi bi-palette-fill me-2"></i>เลือกสีธีม</span><button type="button" onclick="_closeColorPicker()" style="background:rgba(255,255,255,.2);border:none;color:white;border-radius:50%;width:28px;height:28px;cursor:pointer;"><i class="bi bi-x"></i></button></div><div style="overflow-y:auto;padding:14px;"><div id="color-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:9px;">' + cols + '</div></div></div></div>');
+  
+  document.getElementById("color-grid").addEventListener("click", function(e) {
+    var item = e.target.closest(".qa-color-pick-item");
+    if (item) selectColor(item.getAttribute("data-val"), item.getAttribute("data-hex"));
+  });
+}
+
+// ✅ 1. ฟังก์ชันรับค่าสีแบบ Custom
+function applyCustomColor(target, hexColor) {
+  document.getElementById(target + "-color-hidden").value = hexColor;
+  var p = document.getElementById(target + "-color-preview");
+  if (p) p.innerHTML = '<span class="qa-color-dot" style="background:' + escHtml(hexColor) + ';"></span>สีพิเศษ';
+}
+
+// ✅ 2. อัปเดตฟังก์ชันสีธรรมดา ให้ลิงก์กับกล่อง Custom ด้วย
+function selectColor(value, hex) {
+  document.getElementById(_pickerTarget + "-color-hidden").value = value;
+  var p = document.getElementById(_pickerTarget + "-color-preview");
+  var label = value;
+  for (var k=0; k<COLORS.length; k++) { if (COLORS[k].v===value) { label=COLORS[k].l; hex=COLORS[k].h; break; } }
+  if (p) p.innerHTML = '<span class="qa-color-dot" style="background:' + escHtml(hex) + ';"></span>' + escHtml(label);
+  
+  // ซิงค์สีไปที่กล่อง color picker
+  var customInput = document.getElementById(_pickerTarget + "-custom-color");
+  if(customInput) customInput.value = hex;
+  
+  _closeColorPicker();
+}
+
+// ✅ 3. อัปเดตตอนกด Edit ให้โหลดสี Custom มาแสดง
+function editDepartment(deptId) {
+  var dept = APP.departments.find(function(d){ return d.deptId === deptId; });
+  if (!dept) return;
+  document.getElementById("dept-id-hidden").value = dept.deptId;
+  document.getElementById("dept-name").value = dept.deptName;
+  document.getElementById("dept-desc").value = dept.description || "";
+  _pickerTarget = "dept";
+  selectIcon(dept.iconClass || "bi-building");
+  
+  // เช็คว่าเป็นสี Custom (Hex) หรือสี Standard
+  if (dept.colorClass && dept.colorClass.indexOf("#") === 0) {
+    applyCustomColor('dept', dept.colorClass);
+    document.getElementById("dept-custom-color").value = dept.colorClass;
+  } else {
+    selectColor(dept.colorClass || "indigo", "");
+  }
+  
+  populateDeptSectionsCheckboxes(dept.assignedSections || []);
+  var btn = document.getElementById("btn-save-dept");
+  if (btn) btn.innerHTML = '<i class="bi bi-pencil-fill me-1"></i>แก้ไข';
+  document.getElementById("dept-form").scrollIntoView({behavior:"smooth"});
+}
+
+function editSection(secId) {
+  var sec = APP.sections.find(function(s){ return s.sectionId === secId; });
+  if (!sec) return;
+  document.getElementById("section-id-hidden").value = sec.sectionId;
+  document.getElementById("section-name").value = sec.sectionName;
+  document.getElementById("section-desc").value = sec.description || "";
+  _pickerTarget = "section";
+  selectIcon(sec.iconClass || "bi-folder");
+  
+  // เช็คว่าเป็นสี Custom (Hex) หรือสี Standard
+  if (sec.colorClass && sec.colorClass.indexOf("#") === 0) {
+    applyCustomColor('section', sec.colorClass);
+    document.getElementById("section-custom-color").value = sec.colorClass;
+  } else {
+    selectColor(sec.colorClass || "blue", "");
+  }
+  
+  var forms = APP.forms.filter(function(f){ return f.sectionId === secId && f.isActive; }).map(function(f){ return f.formId; });
+  populateSectionFormCheckboxes(forms);
+  var btn = document.getElementById("btn-save-section");
+  if (btn) btn.innerHTML = '<i class="bi bi-pencil-fill me-1"></i>แก้ไข';
+  document.getElementById("section-form").scrollIntoView({behavior:"smooth"});
+}
+
+
+// ฟังก์ชันสำหรับหาว่า User คนนี้รับผิดชอบ Department ไหนบ้าง (คำนวณจาก Section ที่มี)
+function getDeptsFromSections(secIds) {
+  var deptIds = [];
+  (APP.departments || []).forEach(function(d) {
+    if (d.assignedSections && d.assignedSections.length > 0) {
+      // ถ้า User มี Section ใดๆ ที่ตรงกับใน Department นี้ ให้ถือว่าดูแล Department นี้
+      var hasAny = d.assignedSections.some(function(s) { return secIds.includes(s); });
+      if (hasAny) deptIds.push(d.deptId);
+    }
+  });
+  return deptIds;
+}
+
+// ── ฟังก์ชันใหม่: จัดการ Department ───────────
+function populateDeptSectionsCheckboxes(selectedIds) { 
+  buildSectionChips("dept-sections-checkboxes", selectedIds||[]); 
+}
+
+function clearDeptForm() {
+  document.getElementById("dept-id-hidden").value = "";
+  document.getElementById("dept-name").value = "";
+  document.getElementById("dept-desc").value = "";
+  document.getElementById("dept-icon-hidden").value = "bi-building";
+  document.getElementById("dept-icon-preview").innerHTML = '<i class="bi bi-building me-2"></i>bi-building';
+  document.getElementById("dept-color-hidden").value = "indigo";
+  document.getElementById("dept-color-preview").innerHTML = '<span class="qa-color-dot" style="background:#4338ca;"></span>Indigo';
+  populateDeptSectionsCheckboxes([]);
+  var btn = document.getElementById("btn-save-dept");
+  if (btn) btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึก';
+}
+
+function renderDepartmentList() {
+  var c = document.getElementById("dept-list-table"); if (!c) return;
+  if (!APP.departments || !APP.departments.length) {
+    c.innerHTML = '<p style="color:var(--txt-muted);text-align:center;padding:24px 0;"><i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:8px;"></i>ยังไม่มี Department</p>'; return;
+  }
+  var rows = "";
+  APP.departments.forEach(function(d) {
+    var ch = "#4338ca";
+    for (var ci=0; ci<COLORS.length; ci++) { if (COLORS[ci].v===d.colorClass) { ch=COLORS[ci].h; break; } }
+    
+    var secNames = (d.assignedSections||[]).map(function(sid) {
+      for (var si=0; si<APP.sections.length; si++) { if (APP.sections[si].sectionId===sid) return APP.sections[si].sectionName; }
+      return sid;
+    }).join(", ");
+
+    rows += '<tr>'
+      + '<td><i class="bi ' + escHtml(d.iconClass||"bi-building") + '" style="color:' + ch + ';font-size:1.1rem;"></i></td>'
+      + '<td><strong style="color:var(--txt);">' + escHtml(d.deptName) + '</strong><br><small style="color:var(--txt-muted);">' + escHtml(d.description||"") + '</small></td>'
+      + '<td><span class="qa-role-tag manager" style="background:rgba(67,56,202,0.1);color:#4338ca;">' + (d.assignedSections||[]).length + ' งานย่อย</span></td>'
+      + '<td>'
+      + '<button class="qa-btn-ghost btn-sm me-1" onclick="editDepartment(\'' + escHtml(d.deptId) + '\')"><i class="bi bi-pencil"></i></button>'
+      + '<button class="qa-btn-danger btn-sm" onclick="openDeleteConfirm(\'dept\', \'' + escHtml(d.deptId) + '\', \'' + escHtml(d.deptName) + '\')"><i class="bi bi-trash"></i></button>'
+      + '</td></tr>';
+  });
+  c.innerHTML = '<div class="table-responsive"><table class="qa-table"><thead><tr><th>ไอคอน</th><th>ชื่อ Department</th><th>จำนวนงานย่อย</th><th>จัดการ</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function handleSaveDepartment(event) {
+  event.preventDefault();
+  var btn = document.getElementById("btn-save-dept");
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...'; }
+  
+  var af = getSelectedChips("dept-sections-checkboxes");
+  var rawColor = document.getElementById("dept-color-hidden").value||"indigo";
+  var data = {
+    deptId: document.getElementById("dept-id-hidden").value||"",
+    deptName: (document.getElementById("dept-name").value||"").trim(),
+    description: (document.getElementById("dept-desc").value||"").trim(),
+    iconClass: document.getElementById("dept-icon-hidden").value||"bi-building",
+    colorClass: rawColor,
+    isActive: true, assignedSections: af
+  };
+  
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled=false; btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึก'; }
+      if (res&&res.success) {
+        showToast(res.message||"สำเร็จ","success");
+        // ✅ สั่งให้รีเฟรชข้อมูลหลังบ้าน และวาดตาราง + ปุ่มตัวเลือก Manager ใหม่
+        refreshAllData(function(){ 
+          renderDepartmentList(); 
+          clearDeptForm(); 
+          if (typeof buildDeptChips === 'function') {
+            buildDeptChips("mgr-dept-checkboxes", []); 
+          }
+        });
+      } else showToast((res&&res.message)||"เกิดข้อผิดพลาด","danger");
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled=false; btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึก'; }
+      showToast(err.message||err,"danger");
+    })
+    .saveDepartment(data);
+}
+
+
+
+// ── Section chips ─────────────────────────────────────────────
+function populateSectionFormCheckboxes(selectedIds) {
+  buildFormChips("section-form-checkboxes", selectedIds || []);
+}
+function clearSectionForm() {
+  document.getElementById("section-id-hidden").value = "";
+  document.getElementById("section-name").value      = "";
+  document.getElementById("section-desc").value      = "";
+  document.getElementById("section-icon-hidden").value = "bi-folder";
+  document.getElementById("section-icon-preview").innerHTML = '<i class="bi bi-folder me-2"></i>bi-folder';
+  document.getElementById("section-color-hidden").value = "blue";
+  document.getElementById("section-color-preview").innerHTML = '<span class="qa-color-dot" style="background:#2563eb;"></span>Blue';
+  populateSectionFormCheckboxes([]);
+  var btn = document.getElementById("btn-save-section");
+  if (btn) btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึก';
+}
+
+
+function handleSaveSection(event) {
+  event.preventDefault();
+  var btn = document.getElementById("btn-save-section");
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...'; }
+  var af   = getSelectedChips("section-form-checkboxes");
+  var rawColor = document.getElementById("section-color-hidden").value||"blue";
+  var customHex = "";
+  var colorClass = rawColor;
+  if (rawColor.indexOf("custom:") === 0) { customHex = rawColor.replace("custom:",""); colorClass = "custom"; }
+  var data = {
+    sectionId:   document.getElementById("section-id-hidden").value||"",
+    sectionName: (document.getElementById("section-name").value||"").trim(),
+    description: (document.getElementById("section-desc").value||"").trim(),
+    iconClass:   document.getElementById("section-icon-hidden").value||"bi-folder",
+    colorClass:  colorClass,
+    customColor: customHex,
+    isActive: true, assignedFormIDs: af
+  };
+  if (!data.sectionName) {
+    showToast("กรุณาใส่ชื่อ Section","warning");
+    if (btn) { btn.disabled=false; btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึก'; } return;
+  }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled=false; btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึก'; }
+      if (res&&res.success) {
+        showToast(res.message||"สำเร็จ","success");
+        refreshAllData(function(){
+          renderSectionList(); populateSectionFormCheckboxes();
+          populateMgrSectionsCheckboxes(); populateSettingsSectionsCheckboxes();
+          populateRegisterSections(); renderAdminDashboard(); renderPublicDashboard(); clearSectionForm();
+        });
+      } else showToast((res&&res.message)||"เกิดข้อผิดพลาด","danger");
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled=false; btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึก'; }
+      showToast(err.message||err,"danger");
+    })
+    .saveSection(data);
+}
+function renderSectionList() {
+  var c = document.getElementById("section-list-table"); if (!c) return;
+  if (!APP.sections.length) {
+    c.innerHTML = '<p style="color:var(--txt-muted);text-align:center;padding:24px 0;"><i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:8px;"></i>ยังไม่มี Section</p>'; return;
+  }
+  var rows = "";
+  for (var k=0; k<APP.sections.length; k++) {
+    var s = APP.sections[k];
+    var ch = "#2563eb";
+    for (var ci=0; ci<COLORS.length; ci++) { if (COLORS[ci].v===s.colorClass) { ch=COLORS[ci].h; break; } }
+    var fn = "";
+    (s.assignedFormIDs||[]).forEach(function(fid) {
+      for (var fi=0; fi<APP.forms.length; fi++) { if (APP.forms[fi].formId===fid) { fn+=(fn?", ":"")+APP.forms[fi].formName; break; } }
+    });
+    rows += '<tr>'
+      + '<td><i class="bi ' + escHtml(s.iconClass||"bi-folder") + '" style="color:' + ch + ';font-size:1.1rem;"></i></td>'
+      + '<td><strong style="color:var(--txt);">' + escHtml(s.sectionName) + '</strong><br><small style="color:var(--txt-muted);">' + escHtml(s.description||"") + '</small></td>'
+      + '<td><small style="color:var(--txt-muted);">' + escHtml(fn||"-") + '</small></td>'
+      + '<td>' + (s.isActive?'<span class="qa-status-pill ok">ใช้งาน</span>':'<span class="qa-status-pill wait">ปิด</span>') + '</td>'
+      + '<td>'
+      + '<button class="qa-btn-ghost btn-sm me-1" data-sec-edit="' + escHtml(s.sectionId) + '" onclick="_secEditBtn(this)"><i class="bi bi-pencil"></i></button>'
+      + '<button class="qa-btn-danger btn-sm" data-del-type="section" data-del-id="' + escHtml(s.sectionId) + '" data-del-name="' + escHtml(s.sectionName) + '" onclick="_delBtn(this)"><i class="bi bi-trash"></i></button>'
+      + '</td></tr>';
+  }
+  c.innerHTML = '<div class="table-responsive"><table class="qa-table"><thead><tr><th>ไอคอน</th><th>ชื่อ Section</th><th>Form</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+function _secEditBtn(btn) { editSection(btn.getAttribute("data-sec-edit")); }
+
+// ── Manager ───────────────────────────────────────────────────
+function populateMgrSectionsCheckboxes(selectedIds) { buildSectionChips("mgr-sections-checkboxes", selectedIds||[]); }
+
+// ── ตอนติ๊กเลือกตำแหน่ง (หน้าเพิ่ม) ──
+function toggleAdminPermission() {
+  var cbs = Array.from(document.querySelectorAll('input[name="admin_positions"]:checked')).map(function(x){return x.value;});
+  var isMgr = cbs.includes("ผู้บริหาร"); 
+  
+  document.getElementById("admin-perm-container").style.display = isMgr ? "block" : "none";
+  // ✅ ถ้าเป็น Manager ให้แสดง Department | ถ้าเป็น User ให้แสดง Section
+  document.getElementById("mgr-dept-container").style.display = isMgr ? "block" : "none"; 
+  document.getElementById("mgr-sec-container").style.display  = isMgr ? "none" : "block"; 
+}
+// ── ตอนติ๊กเลือกตำแหน่ง (ใน Modal แก้ไข) ──
+function toggleEditModalPermission() {
+  var cbs = Array.from(document.querySelectorAll('input[name="edit_positions"]:checked')).map(function(x){return x.value;});
+  var isMgr = cbs.includes("ผู้บริหาร");
+  
+  document.getElementById("edit-user-perm-container").style.display = isMgr ? "block" : "none";
+  document.getElementById("edit-dept-container").style.display = isMgr ? "block" : "none"; 
+  document.getElementById("edit-sec-container").style.display  = isMgr ? "none" : "block"; 
+}
+// ── ตอนกดบันทึกเพิ่มบุคลากร ──
+function handleSavePersonnel(event) {
+  event.preventDefault();
+  var btn = event.target.querySelector('button[type="submit"]');
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...'; }
+  
+  var positions = Array.from(document.querySelectorAll('input[name="admin_positions"]:checked')).map(function(x){return x.value;});
+  if(positions.length === 0) { showToast("กรุณาเลือกตำแหน่งงานอย่างน้อย 1 ตำแหน่ง", "warning"); if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-person-plus-fill me-1"></i>บันทึกข้อมูลบุคลากร';} return; }
+
+  var isMgr = positions.includes("ผู้บริหาร");
+  // ✅ ดึงค่าให้ตรงกับบทบาท
+  var sectionsToSave = isMgr ? getSelectedChips("mgr-dept-checkboxes") : getSelectedChips("mgr-sections-checkboxes"); 
+  
+  var data = { 
+      email:(document.getElementById("mgr-email").value||"").trim(), prefix:document.getElementById("mgr-prefix").value||"นาย", 
+      fname:(document.getElementById("mgr-fname").value||"").trim(), lname:(document.getElementById("mgr-lname").value||"").trim(), 
+      phone:(document.getElementById("mgr-phone").value||"").trim(), 
+      sections: sectionsToSave, positions: positions, permission: document.getElementById("mgr-permission").value || "view" 
+  };
+  
+  google.script.run
+    .withSuccessHandler(function(res) { if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-person-plus-fill me-1"></i>บันทึกข้อมูลบุคลากร';} if (res&&res.success) { showToast(res.message,"success"); loadAllUsers(); event.target.reset(); toggleAdminPermission(); } else showToast((res&&res.message)||"เกิดข้อผิดพลาด","danger"); })
+    .withFailureHandler(function(err) { if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-person-plus-fill me-1"></i>บันทึกข้อมูลบุคลากร';} showToast(err.message||err,"danger"); })
+    .savePersonnel(data);
+}
+
+
+function renderUsersTable(data) {
+  var c = document.getElementById("users-table-area"); if (!c) return;
+  var total = (data.admins||[]).length+(data.managers||[]).length+(data.users||[]).length;
+  var html = '<p style="color:var(--txt-muted);font-size:.82rem;margin-bottom:8px;">ผู้ใช้ทั้งหมด '+total+' คน</p><div class="table-responsive"><table class="qa-table"><thead><tr><th>ชื่อ-สกุล</th><th>อีเมล</th><th>บทบาท</th><th>จัดการ</th></tr></thead><tbody>';
+  
+  (data.admins||[]).forEach(function(u) { html += '<tr><td style="color:var(--txt);">'+escHtml(u.prefix+u.fname+" "+u.lname)+'</td><td style="color:var(--txt-muted);font-size:.82rem;">'+escHtml(u.email)+'</td><td><span class="qa-role-tag admin">Admin</span></td><td>-</td></tr>'; });
+  
+  (data.managers||[]).forEach(function(u) {
+    var activeSecs = (u.sections||[]).filter(function(sid) {
+         return APP.sections.some(function(s) { return s.sectionId === sid && s.isActive; });
+    });
+    var sn = activeSecs.map(function(sid) { for(var i=0;i<APP.sections.length;i++){if(APP.sections[i].sectionId===sid)return APP.sections[i].sectionName;} return sid; }).join(", ")||"-";
+    
+    html += '<tr><td style="color:var(--txt);">'+escHtml(u.prefix+u.fname+" "+u.lname)+'<br><small style="color:var(--txt-muted);"><i class="bi bi-folder me-1"></i>'+escHtml(sn)+'</small></td><td style="color:var(--txt-muted);font-size:.82rem;">'+escHtml(u.email)+'</td><td><span class="qa-role-tag manager">Manager</span></td>'
+    +'<td><button class="qa-btn-ghost btn-sm me-1" data-email="'+escHtml(u.email)+'" data-prefix="'+escHtml(u.prefix)+'" data-fname="'+escHtml(u.fname)+'" data-lname="'+escHtml(u.lname)+'" data-phone="'+escHtml(u.phone)+'" data-positions="'+escHtml(JSON.stringify(u.positions||["ผู้บริหาร"]))+'" data-sections="'+escHtml(JSON.stringify(u.sections||[]))+'" data-role="manager" data-perm="'+(u.permission||'view')+'" onclick="_editUserBtn(this)"><i class="bi bi-pencil-square"></i></button>'
+    +'<button class="qa-btn-danger btn-sm" data-del-type="user-manager" data-del-id="'+escHtml(u.email)+'" data-del-name="'+escHtml(u.prefix+u.fname+" "+u.lname)+'" onclick="_delBtn(this)"><i class="bi bi-trash"></i></button></td></tr>';
+  });
+  
+  (data.users||[]).forEach(function(u) {
+    var activeSecs = (u.sections||[]).filter(function(sid) {
+         return APP.sections.some(function(s) { return s.sectionId === sid && s.isActive; });
+    });
+    var sn = activeSecs.map(function(sid) { for(var i=0;i<APP.sections.length;i++){if(APP.sections[i].sectionId===sid)return APP.sections[i].sectionName;} return sid; }).join(", ")||"-";
+    
+    html += '<tr><td style="color:var(--txt);">'+escHtml(u.prefix+u.fname+" "+u.lname)+'<br><small style="color:var(--txt-muted);"><i class="bi bi-folder me-1"></i>'+escHtml(sn)+'</small></td><td style="color:var(--txt-muted);font-size:.82rem;">'+escHtml(u.email)+'</td><td><span class="qa-role-tag user">User</span></td>'
+      +'<td><button class="qa-btn-ghost btn-sm me-1" data-email="'+escHtml(u.email)+'" data-prefix="'+escHtml(u.prefix)+'" data-fname="'+escHtml(u.fname)+'" data-lname="'+escHtml(u.lname)+'" data-phone="'+escHtml(u.phone)+'" data-positions="'+escHtml(JSON.stringify(u.positions||[]))+'" data-sections="'+escHtml(JSON.stringify(u.sections||[]))+'" data-role="user" data-perm="" onclick="_editUserBtn(this)"><i class="bi bi-pencil-square"></i></button>'
+      +'<button class="qa-btn-danger btn-sm" data-del-type="user-user" data-del-id="'+escHtml(u.email)+'" data-del-name="'+escHtml(u.prefix+u.fname+" "+u.lname)+'" onclick="_delBtn(this)"><i class="bi bi-trash"></i></button></td></tr>';
+  });
+  html += '</tbody></table></div>'; c.innerHTML = html;
+}
+
+function _editUserBtn(btn) { 
+  openEditUserSections(
+    btn.getAttribute("data-email"), btn.getAttribute("data-prefix"), btn.getAttribute("data-fname"), btn.getAttribute("data-lname"),
+    btn.getAttribute("data-phone"), btn.getAttribute("data-positions"), btn.getAttribute("data-sections"), btn.getAttribute("data-role"), btn.getAttribute("data-perm")
+  ); 
+}
+
+
+// ── ตอนกดแก้ไข (เพื่อนำข้อมูลมาใส่ Modal) ──
+function openEditUserSections(email, prefix, fname, lname, phone, positionsJson, sectionsJson, role, perm) {
+  var sec = [], pos = [];
+  try { sec = JSON.parse(sectionsJson); } catch(e) {}
+  try { pos = JSON.parse(positionsJson); } catch(e) {}
+
+  document.getElementById("edit-user-email-display").innerText = email;
+  document.getElementById("edit-user-email-hidden").value = email;
+  document.getElementById("edit-user-prefix").value = prefix;
+  document.getElementById("edit-user-fname").value = fname;
+  document.getElementById("edit-user-lname").value = lname;
+  document.getElementById("edit-user-phone").value = phone;
+
+  document.querySelectorAll('input[name="edit_positions"]').forEach(function(cb) { cb.checked = pos.includes(cb.value); });
+  toggleEditModalPermission();
+
+  // ล้างการวาดเดิมก่อนวาดใหม่
+  document.getElementById("edit-user-dept-list").innerHTML = "";
+  document.getElementById("edit-user-sections-list").innerHTML = "";
+
+  var isMgr = pos.includes("ผู้บริหาร");
+  if (isMgr) {
+      document.getElementById("edit-user-permission").value = perm || "view";
+      buildDeptChips("edit-user-dept-list", sec); // ✅ Manager ให้วาดกล่องฝ่าย
+  } else {
+      buildSectionChips("edit-user-sections-list", sec); // ✅ User ให้วาดกล่องงานย่อย
+  }
+  new bootstrap.Modal(document.getElementById("modal-edit-user-sections")).show();
+}
+
+
+// ── ตอนกดปุ่มบันทึกการแก้ไขใน Modal ──
+function saveEditUserSections() {
+  var btn = document.querySelector('[onclick="saveEditUserSections()"]');
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...'; }
+  
+  var positions = Array.from(document.querySelectorAll('input[name="edit_positions"]:checked')).map(function(x){return x.value;});
+  var isMgr = positions.includes("ผู้บริหาร");
+  
+  // ✅ ดึงค่าให้ตรงกับบทบาท
+  var sectionsToSave = isMgr ? getSelectedChips("edit-user-dept-list") : getSelectedChips("edit-user-sections-list"); 
+  
+  var data = { 
+    email: document.getElementById("edit-user-email-hidden").value,
+    prefix: document.getElementById("edit-user-prefix").value,
+    fname: document.getElementById("edit-user-fname").value,
+    lname: document.getElementById("edit-user-lname").value,
+    phone: document.getElementById("edit-user-phone").value,
+    sections: sectionsToSave, 
+    positions: positions, 
+    permission: document.getElementById("edit-user-permission").value 
+  };
+  
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled=false; btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึกการแก้ไข'; }
+      if (res&&res.success) { showToast("บันทึกสำเร็จ","success"); var mi=bootstrap.Modal.getInstance(document.getElementById("modal-edit-user-sections")); if(mi)mi.hide(); loadAllUsers(); }
+      else showToast((res&&res.message)||"เกิดข้อผิดพลาด","danger");
+    })
+    .withFailureHandler(function(err) { if (btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึกการแก้ไข';} showToast(err.message||err,"danger"); })
+    .savePersonnel(data);
+}
+
+
+
+// ── Users ─────────────────────────────────────────────────────
+function loadAllUsers() {
+  google.script.run
+    .withSuccessHandler(function(res) { if (res&&res.success) renderUsersTable(res.data); else showToast((res&&res.message)||"โหลดไม่สำเร็จ","danger"); })
+    .withFailureHandler(function(err) { showToast(err.message||err,"danger"); })
+    .getAllUsers();
+}
+
+
+function _delBtn(btn)      { openDeleteConfirm(btn.getAttribute("data-del-type"), btn.getAttribute("data-del-id"), btn.getAttribute("data-del-name")); }
+
+function openDeleteConfirm(type, id, name) {
+  APP.pendingDelete = {type:type, id:id, name:name};
+  document.getElementById("del-target-name").innerText = name;
+  document.getElementById("del-target-id").innerText   = id;
+  document.getElementById("del-confirm-email").value   = "";
+  var err = document.getElementById("del-email-error"); if (err) err.style.display = "none";
+  new bootstrap.Modal(document.getElementById("modal-delete-confirm")).show();
+}
+
+function executeDelete() {
+  var input = (document.getElementById("del-confirm-email").value||"").trim().toLowerCase();
+  var admin = ((APP.user&&APP.user.email)||"").toLowerCase();
+  var errEl = document.getElementById("del-email-error");
+  if (input!==admin) { if(errEl)errEl.style.display="block"; showToast("อีเมลไม่ตรงกัน","warning"); return; }
+  if (errEl) errEl.style.display = "none";
+  
+  var btn = document.getElementById("btn-confirm-delete");
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> กำลังลบ...'; }
+  
+  var mi = bootstrap.Modal.getInstance(document.getElementById("modal-delete-confirm")); if(mi)mi.hide();
+  var pd = APP.pendingDelete||{}; APP.pendingDelete = null;
+  var type=pd.type, id=pd.id, name=pd.name;
+  
+  function reset() { if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-trash-fill me-1"></i>ยืนยันลบ';} }
+  
+  if (type==="section") {
+    google.script.run.withSuccessHandler(function(res){ reset(); if(res&&res.success){showToast('ลบ "'+name+'" สำเร็จ',"success");refreshAllData(function(){renderSectionList();renderAdminDashboard();renderPublicDashboard();});}else showToast((res&&res.message)||"ลบไม่สำเร็จ","danger"); }).withFailureHandler(function(err){reset();showToast(err.message||err,"danger");}).deleteSection(id);
+  } else if (type==="form") {
+    google.script.run.withSuccessHandler(function(res){ reset(); if(res&&res.success){showToast('ลบ "'+name+'" สำเร็จ',"success");refreshAllData(function(){renderFormList();});}else showToast((res&&res.message)||"ลบไม่สำเร็จ","danger"); }).withFailureHandler(function(err){reset();showToast(err.message||err,"danger");}).deleteForm(id);
+  } else if (type==="user-manager"||type==="user-user") {
+    var utype = type==="user-manager"?"manager":"user";
+    google.script.run.withSuccessHandler(function(res){ reset(); if(res&&res.success){showToast('ลบบัญชี "'+name+'" สำเร็จ',"success");loadAllUsers();}else showToast((res&&res.message)||"ลบไม่สำเร็จ","danger"); }).withFailureHandler(function(err){reset();showToast(err.message||err,"danger");}).deleteUser(utype,id);
+  } else if (type==="dept") {  // ✅ เพิ่มการลบ Department
+    google.script.run.withSuccessHandler(function(res){ reset(); if(res&&res.success){showToast('ลบฝ่าย "'+name+'" สำเร็จ',"success");refreshAllData(function(){renderDepartmentList();});}else showToast((res&&res.message)||"ลบไม่สำเร็จ","danger"); }).withFailureHandler(function(err){reset();showToast(err.message||err,"danger");}).deleteDepartment(id);
+  }
+}
+
+// ── Settings ──────────────────────────────────────────────────
+function populateSettingsSectionsCheckboxes(selectedIds) { buildSectionChips("settings-sections-checkboxes", selectedIds||[]); }
+function handleAdminSettings(event) {
+  event.preventDefault();
+  var btn = document.getElementById("btnAdminSave");
+  if (btn) { btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...'; }
+  var al = getSelectedChips("settings-sections-checkboxes");
+  var data = { year:document.getElementById("admin-year").value||"", startDate:document.getElementById("admin-start").value||"", endDate:document.getElementById("admin-end").value||"", status:document.getElementById("admin-status").value||"Open", allowedSections:al };
+  if (!data.year) { showToast("กรุณาระบุปีการศึกษา","warning"); if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึกการตั้งค่า';} return; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled=false; btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึกการตั้งค่า'; }
+      if (res&&res.success) { showToast("บันทึกสำเร็จ","success"); refreshAllData(function(){setupYearSelects();setupAdminYearSelects();renderSettingsYearList();renderAdminDashboard();populateExportYearSelect();renderPublicDashboard();renderDeadlineBanner();}); }
+      else showToast((res&&res.message)||"เกิดข้อผิดพลาด","danger");
+    })
+    .withFailureHandler(function(err) { if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึกการตั้งค่า';} showToast(err.message||err,"danger"); })
+    .saveAdminSettings(data);
+}
+function renderSettingsYearList() {
+  var c = document.getElementById("settings-year-list"); if (!c) return;
+  if (!APP.settings.length) { c.innerHTML='<p style="color:var(--txt-muted);text-align:center;padding:24px 0;"><i class="bi bi-calendar-x" style="font-size:2rem;display:block;margin-bottom:8px;"></i>ยังไม่มีปีการศึกษา</p>'; return; }
+  var rows = "";
+  for (var k=0; k<APP.settings.length; k++) {
+    var s = APP.settings[k];
+    rows += '<tr>'
+      + '<td style="font-weight:700;color:var(--primary);font-size:1rem;">' + escHtml(String(s.year)) + '</td>'
+      + '<td>' + (s.isOpen?'<span class="qa-status-pill ok"><i class="bi bi-unlock-fill"></i> เปิด</span>':'<span class="qa-status-pill wait"><i class="bi bi-lock-fill"></i> ปิด</span>') + '</td>'
+      + '<td style="color:var(--txt-muted);font-size:.82rem;">' + toThaiDate(s.startDate) + '<br>&#8594; ' + toThaiDate(s.endDate) + '</td>'
+      + '<td><button class="qa-btn-ghost btn-sm" data-year="' + escHtml(String(s.year)) + '" onclick="_loadSettingBtn(this)"><i class="bi bi-pencil"></i></button></td></tr>';
+  }
+  c.innerHTML = '<div class="table-responsive"><table class="qa-table"><thead><tr><th>ปี</th><th>สถานะ</th><th>ช่วงเวลา</th><th>แก้ไข</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+function _loadSettingBtn(btn) { loadSettingToForm(btn.getAttribute("data-year")); }
+function loadSettingToForm(year) {
+  var s = null;
+  for (var i=0;i<APP.settings.length;i++){if(String(APP.settings[i].year)===String(year)){s=APP.settings[i];break;}}
+  if (!s) return;
+  document.getElementById("admin-year").value   = s.year;
+  document.getElementById("admin-start").value  = s.startDate?s.startDate.split("T")[0]:"";
+  document.getElementById("admin-end").value    = s.endDate?s.endDate.split("T")[0]:"";
+  document.getElementById("admin-status").value = s.isOpen?"Open":"Closed";
+  updateDatePreview();
+  populateSettingsSectionsCheckboxes(s.allowedSections||[]);
+  document.getElementById("adminSettingsForm").scrollIntoView({behavior:"smooth"});
+  showToast("โหลดข้อมูลปี "+year+" แล้ว","info");
+}
+
+// ── Export ────────────────────────────────────────────────────
+function handleExport() {
+  var year = (document.getElementById("export-year-select")||{}).value||"";
+  if (!year) { showToast("กรุณาเลือกปีการศึกษา","warning"); return; }
+  var r = document.getElementById("export-result");
+  if (r) r.innerHTML = '<div class="qa-alert qa-alert-info"><span class="spinner-border spinner-border-sm me-1"></span> กำลัง Export...</div>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!r) return;
+      if (res&&res.success) r.innerHTML = '<div class="qa-alert qa-alert-success"><i class="bi bi-check-circle-fill"></i><div>Export สำเร็จ! '+res.rows+' แถว<br><small>'+escHtml(res.fileName||"")+'</small><br><a href="'+escHtml(res.url||"")+'" target="_blank" class="qa-btn-success btn-sm d-inline-flex mt-2"><i class="bi bi-box-arrow-up-right me-1"></i>เปิดไฟล์</a></div></div>';
+      else r.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml((res&&res.message)||"ไม่สำเร็จ")+'</span></div>';
+    })
+    .withFailureHandler(function(err) { if(r)r.innerHTML='<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml(err.message||err)+'</span></div>'; })
+    .exportYearDataToNewFile(year);
+}
+
+// ── Form list + section dropdown ──────────────────────────────
+function renderFormList() {
+  var c = document.getElementById("form-list-table"); if (!c) return;
+  if (!APP.forms.length) { c.innerHTML='<p style="color:var(--txt-muted);text-align:center;padding:24px 0;"><i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:8px;"></i>ยังไม่มี Form</p>'; return; }
+  var rows = "";
+  APP.forms.forEach(function(f) {
+    var sec = null;
+    for (var i=0;i<APP.sections.length;i++){if(APP.sections[i].sectionId===f.sectionId){sec=APP.sections[i];break;}}
+    rows += '<tr>'
+      +'<td><strong style="color:var(--txt);">'+escHtml(f.formName)+'</strong>'+(f.description?'<br><small class="text-muted">'+escHtml(f.description.substring(0,60))+'</small>':'')+'</td>'
+      +'<td><small class="text-muted">'+(sec?escHtml(sec.sectionName):'<span style="color:var(--warning);">ไม่ระบุ</span>')+'</small></td>'
+      +'<td style="text-align:center;"><span style="background:var(--primary-ul);color:var(--primary);padding:2px 9px;border-radius:10px;font-size:.74rem;">'+(f.fields||[]).length+' ฟิลด์</span></td>'
+      +'<td>'+(f.isActive?'<span class="qa-status-pill ok">ใช้งาน</span>':'<span class="qa-status-pill wait">ปิด</span>')+'</td>'
+      +'<td><button class="qa-btn-ghost btn-sm me-1" data-form-edit="'+escHtml(f.formId)+'" onclick="_formEditBtn(this)"><i class="bi bi-pencil"></i></button>'
+      +'<button class="qa-btn-danger btn-sm" data-del-type="form" data-del-id="'+escHtml(f.formId)+'" data-del-name="'+escHtml(f.formName)+'" onclick="_delBtn(this)"><i class="bi bi-trash"></i></button></td></tr>';
+  });
+  c.innerHTML = '<div class="table-responsive"><table class="qa-table"><thead><tr><th>ชื่อ Form</th><th>Section</th><th>ฟิลด์</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+
+
+function editForm(formId) {
+  if (typeof _fbLoadForm==="function") { _fbLoadForm(formId); return; }
+  if (typeof clearFormBuilder!=="function") { showToast("Form Builder ยังไม่ได้โหลด","info"); switchAdminTab("tab-forms"); return; }
+  var form = null;
+  for (var i=0;i<APP.forms.length;i++){if(APP.forms[i].formId===formId){form=APP.forms[i];break;}}
+  if (!form) return;
+  clearFormBuilder();
+  document.getElementById("form-id-hidden").value = form.formId;
+  document.getElementById("form-name").value = form.formName;
+  if (document.getElementById("form-section-id")) document.getElementById("form-section-id").value = form.sectionId||"";
+  if (document.getElementById("form-desc")) document.getElementById("form-desc").value = form.description||"";
+  if (document.getElementById("form-note")) document.getElementById("form-note").value = form.note||"";
+  if (typeof _fbFields!=="undefined") {
+    _fbFields = (form.fields||[]).map(function(f){return {id:"f"+Date.now()+Math.random().toString(36).slice(2,5),type:f.type||"text",label:f.label||"",required:!!f.required,desc:f.desc||"",placeholder:f.placeholder||"",options:f.options||"",columns:f.columns||"",sectionIds:f.sectionIds||[],items:f.items||[],imageData:f.imageData||"",tableDef:f.tableDef||null};});
+    if (typeof _fbRenderAll==="function")     _fbRenderAll();
+    if (typeof _fbUpdatePreview==="function") _fbUpdatePreview();
+  }
+  var btn = document.getElementById("btn-save-form"); if(btn) btn.innerHTML='<i class="bi bi-pencil-fill me-1"></i>แก้ไข Form';
+  switchAdminTab("tab-forms");
+}
+
+
+function _syncCustomColorHex(val) {
+  var hex = val.trim();
+  var cp = document.getElementById("custom-color-picker");
+  var ci = document.getElementById("custom-color-hex");
+  if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+    if (cp) cp.value = hex;
+  }
+  if (ci && val !== ci.value) ci.value = val;
+}
+function _applyCustomColor() {
+  var hex = (document.getElementById("custom-color-hex")||{}).value||"#2563eb";
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) { showToast("รูปแบบสี Hex ไม่ถูกต้อง เช่น #ff6600","warning"); return; }
+  // บันทึก custom color
+  document.getElementById("section-color-hidden").value = "custom:"+hex;
+  var p = document.getElementById("section-color-preview");
+  if (p) p.innerHTML = '<span class="qa-color-dot" style="background:'+hex+';"></span>Custom '+hex;
+  _closeColorPicker();
+}
+
+
+</script>

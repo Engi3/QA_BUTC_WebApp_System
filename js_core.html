@@ -1,0 +1,509 @@
+<script>
+// ============================================================
+// js_core.html — OPTIMIZED + Theme restored + College name removed
+// ============================================================
+
+// ── Session restore (runs before DOMContentLoaded) ──────────
+var _savedUser = (function() {
+  try { var s = localStorage.getItem("qa_session_v3"); return s ? JSON.parse(s) : null; } catch(e) { return null; }
+})();
+
+// ── APP State ───────────────────────────────────────────────
+var APP = {
+  user:          _savedUser,
+  settings:      [],
+  dashboard:     [],
+  sections:      [],
+  departments:   [], // ✅ เพิ่มบรรทัดนี้
+  forms:         [],
+  theme:         {},
+  visits:        {},
+  activeRole:    (_savedUser && _savedUser.activeRole) || "",
+  fieldCounter:  0,
+  charts:        {},
+  idleTime:      1800,
+  idleInterval:  null,
+  IDLE_LIMIT:    1800,
+  pendingDelete: null,
+  _dataLoaded:   false,
+  selectedTheme: {},
+  iqaMapping:    {},
+  gradStops:     [{color:"#1e40af",pct:0},{color:"#2563eb",pct:50},{color:"#0ea5e9",pct:100}],
+  gradDir:       "135deg",
+  gradType:      "linear"
+};
+
+// ── Static data ─────────────────────────────────────────────
+var ICONS = [
+  ["bi-people-fill","บุคลากร"],["bi-person-fill","บุคคล"],["bi-person-badge-fill","บัตร"],
+  ["bi-person-workspace","ทำงาน"],["bi-person-lines-fill","รายชื่อ"],
+  ["bi-book-fill","หนังสือ"],["bi-mortarboard-fill","ศึกษา"],["bi-pencil-fill","ดินสอ"],
+  ["bi-clipboard-data-fill","ข้อมูล"],["bi-clipboard2-check-fill","ตรวจ"],
+  ["bi-award-fill","รางวัล"],["bi-patch-check-fill","ผ่านเกณฑ์"],["bi-card-checklist","รายการ"],
+  ["bi-building-fill","อาคาร"],["bi-house-fill","บ้าน"],["bi-geo-alt-fill","ที่ตั้ง"],
+  ["bi-laptop-fill","คอม"],["bi-cash-stack","เงิน"],["bi-bar-chart-fill","แผนภูมิ"],
+  ["bi-folder-fill","โฟลเดอร์"],["bi-file-earmark-text-fill","เอกสาร"],
+  ["bi-file-earmark-pdf-fill","PDF"],["bi-file-earmark-excel-fill","Excel"],
+  ["bi-chat-dots-fill","แชท"],["bi-envelope-fill","อีเมล"],["bi-megaphone-fill","ประกาศ"],
+  ["bi-bell-fill","แจ้งเตือน"],["bi-gear-fill","ตั้งค่า"],["bi-heart-fill","สุขภาพ"],
+  ["bi-star-fill","ดาว"],["bi-trophy-fill","ถ้วย"],["bi-tools","เครื่องมือ"],
+  ["bi-calendar3","ปฏิทิน"],["bi-clock-fill","เวลา"],["bi-map-fill","แผนที่"],
+  ["bi-check2-circle","เสร็จ"],["bi-lightbulb-fill","ไอเดีย"],
+  ["bi-globe","โลก"],["bi-layers-fill","ชั้น"],["bi-hospital-fill","รพ."]
+];
+
+var COLORS = [
+  {v:"blue",  l:"Blue",    h:"#2563eb"},{v:"indigo",l:"Indigo",  h:"#4338ca"},
+  {v:"violet",l:"Violet",  h:"#7c3aed"},{v:"purple",l:"Purple",  h:"#9333ea"},
+  {v:"pink",  l:"Pink",    h:"#db2777"},{v:"rose",  l:"Rose",    h:"#e11d48"},
+  {v:"red",   l:"Red",     h:"#dc2626"},{v:"orange",l:"Orange",  h:"#ea580c"},
+  {v:"amber", l:"Amber",   h:"#d97706"},{v:"lime",  l:"Lime",    h:"#65a30d"},
+  {v:"green", l:"Green",   h:"#16a34a"},{v:"emerald",l:"Emerald",h:"#059669"},
+  {v:"teal",  l:"Teal",    h:"#0d9488"},{v:"sky",   l:"Sky",     h:"#0284c7"},
+  {v:"navy",  l:"Navy",    h:"#1e3a8a"},{v:"slate", l:"Slate",   h:"#475569"},
+  {v:"gray",  l:"Gray",    h:"#6b7280"},{v:"gold",  l:"Gold",    h:"#b45309"}
+];
+
+var THEME_PRIMARIES = [
+  "#2563eb","#4338ca","#7c3aed","#9333ea","#db2777","#e11d48",
+  "#dc2626","#ea580c","#d97706","#65a30d","#059669","#0d9488",
+  "#0284c7","#1e3a8a","#475569"
+];
+
+var GRADIENTS = [
+  {id:"g_blue",  l:"Ocean Blue", g:"linear-gradient(135deg,#1e40af 0%,#2563eb 50%,#0ea5e9 100%)"},
+  {id:"g_indigo",l:"Deep Indigo",g:"linear-gradient(135deg,#312e81 0%,#4338ca 50%,#6366f1 100%)"},
+  {id:"g_violet",l:"Violet Dusk",g:"linear-gradient(135deg,#4c1d95 0%,#7c3aed 50%,#a78bfa 100%)"},
+  {id:"g_purple",l:"Purple Haze",g:"linear-gradient(135deg,#581c87 0%,#9333ea 50%,#c084fc 100%)"},
+  {id:"g_pink",  l:"Pink Berry", g:"linear-gradient(135deg,#9d174d 0%,#db2777 50%,#f472b6 100%)"},
+  {id:"g_red",   l:"Crimson",    g:"linear-gradient(135deg,#7f1d1d 0%,#dc2626 50%,#f87171 100%)"},
+  {id:"g_orange",l:"Sunset",     g:"linear-gradient(135deg,#7c2d12 0%,#ea580c 45%,#f59e0b 100%)"},
+  {id:"g_green", l:"Forest",     g:"linear-gradient(135deg,#064e3b 0%,#059669 50%,#34d399 100%)"},
+  {id:"g_teal",  l:"Teal Wave",  g:"linear-gradient(135deg,#134e4a 0%,#0d9488 50%,#2dd4bf 100%)"},
+  {id:"g_sky",   l:"Sky High",   g:"linear-gradient(135deg,#0c4a6e 0%,#0284c7 50%,#38bdf8 100%)"},
+  {id:"g_navy",  l:"Deep Navy",  g:"linear-gradient(135deg,#0f172a 0%,#1e3a8a 50%,#3b82f6 100%)"},
+  {id:"g_dark",  l:"Midnight",   g:"linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#334155 100%)"},
+  {id:"g_rose",  l:"Rose Gold",  g:"linear-gradient(135deg,#881337 0%,#e11d48 50%,#fb7185 100%)"},
+  {id:"g_ember", l:"Ember",      g:"linear-gradient(135deg,#431407 0%,#c2410c 50%,#fb923c 100%)"},
+  {id:"g_lime",  l:"Lime Fresh", g:"linear-gradient(135deg,#1a2e05 0%,#65a30d 50%,#bef264 100%)"},
+  {id:"g_custom",l:"🎨 Custom",  g:""}
+];
+
+// ── Session helpers ──────────────────────────────────────────
+function saveSession() {
+  try {
+    if (APP.user) {
+      var data = JSON.parse(JSON.stringify(APP.user));
+      data.activeRole = APP.activeRole;
+      localStorage.setItem("qa_session_v3", JSON.stringify(data));
+    } else { localStorage.removeItem("qa_session_v3"); }
+  } catch(e) {}
+}
+function clearSession() {
+  localStorage.removeItem("qa_session_v3");
+  APP.user = null; APP.activeRole = "";
+}
+
+// ── Theme system ─────────────────────────────────────────────
+function initTheme() { _applyThemeMode(localStorage.getItem("qa_theme") || "light"); }
+function _applyThemeMode(mode) {
+  document.documentElement.setAttribute("data-theme", mode);
+  localStorage.setItem("qa_theme", mode);
+  var sun  = document.getElementById("icon-sun");
+  var moon = document.getElementById("icon-moon");
+  if (sun)  sun.style.display  = mode === "dark" ? "none" : "block";
+  if (moon) moon.style.display = mode === "dark" ? "block" : "none";
+  var lm = document.getElementById("btn-light-mode");
+  var dm = document.getElementById("btn-dark-mode");
+  if (lm) lm.classList.toggle("active", mode === "light");
+  if (dm) dm.classList.toggle("active", mode === "dark");
+}
+function setTheme(mode) { _applyThemeMode(mode); }
+function toggleTheme() {
+  var cur = document.documentElement.getAttribute("data-theme") || "light";
+  _applyThemeMode(cur === "light" ? "dark" : "light");
+}
+
+function applyThemeData(t) {
+  if (!t || !Object.keys(t).length) return;
+  APP.selectedTheme = Object.assign({}, t);
+  var root = document.documentElement;
+  if (t.primary) {
+    root.style.setProperty("--primary",    t.primary);
+    root.style.setProperty("--primary-l",  t.primary);
+    root.style.setProperty("--primary-d",  t.primary);
+    root.style.setProperty("--primary-ul", t.primary + "1a");
+    root.style.setProperty("--primary-s",  t.primary + "33");
+  }
+  if (t.gradientCss) root.style.setProperty("--hero-grad", t.gradientCss);
+  _applyLogoToNavbar(t.logoUrl || "");
+  try { localStorage.setItem("qa_server_theme", JSON.stringify(t)); } catch(e) {}
+}
+function _loadCachedTheme() {
+  try { var c = localStorage.getItem("qa_server_theme"); if (c) applyThemeData(JSON.parse(c)); } catch(e) {}
+}
+
+/*
+function _applyLogoToNavbar(url) {
+  var logoEl = document.getElementById("navbar-logo-img");
+  var iconEl = document.getElementById("navbar-logo-icon");
+  if (!logoEl || !iconEl) return;
+  if (url) {
+    logoEl.src = url;
+    logoEl.style.display = "block";
+    iconEl.style.display = "none";
+    // Auto-fit: สร้าง error handler ป้องกัน broken image
+    logoEl.onerror = function() { logoEl.style.display = "none"; iconEl.style.display = "flex"; };
+  } else {
+    logoEl.style.display = "none";
+    iconEl.style.display = "flex";
+  }
+}*/
+/*
+function _applyLogoToNavbar(url) {
+  var logoEl = document.getElementById("navbar-logo-img");
+  var iconEl = document.getElementById("navbar-logo-icon");
+  if (!logoEl || !iconEl) return;
+  
+  if (url) {
+    logoEl.src = url;
+    logoEl.style.display = "block";
+    iconEl.style.display = "none";
+    // ป้องกันกรณีลิงก์เสีย ให้กลับไปโชว์ไอคอนโล่
+    logoEl.onerror = function() { logoEl.style.display = "none"; iconEl.style.display = "flex"; };
+  } else {
+    logoEl.style.display = "none";
+    iconEl.style.display = "flex";
+  }
+  
+  // อัปเดตชื่อวิทยาลัยที่ Navbar
+  var navName = document.getElementById("nav-college-name");
+  if(navName && APP.selectedTheme && APP.selectedTheme.collegeName) {
+      navName.innerText = APP.selectedTheme.collegeName;
+  }
+}*/
+
+function _applyLogoToNavbar(url) {
+  var logoEl = document.getElementById("navbar-logo-img");
+  var iconEl = document.getElementById("navbar-logo-icon");
+  if (!logoEl || !iconEl) return;
+  
+  if (url) {
+    logoEl.src = url;
+    logoEl.style.display = "block";
+    iconEl.style.display = "none";
+    // ป้องกันกรณีลิงก์เสีย ให้กลับไปโชว์ไอคอนโล่
+    logoEl.onerror = function() { logoEl.style.display = "none"; iconEl.style.display = "flex"; };
+  } else {
+    logoEl.style.display = "none";
+    iconEl.style.display = "flex";
+  }
+  
+  // ✅ อัปเดตชื่อวิทยาลัยที่ Navbar โดยเช็คข้อมูลจากฐานข้อมูลให้ชัวร์
+  var navName = document.getElementById("nav-college-name");
+  if(navName) {
+      // ดึงจาก Theme ที่เลือก หรือ Theme หลัก ถ้าไม่มีให้ใช้ค่าเริ่มต้น
+      var cName = (APP.selectedTheme && APP.selectedTheme.collegeName) || (APP.theme && APP.theme.collegeName) || "ระบบประกันคุณภาพการศึกษา";
+      navName.innerText = cName;
+  }
+}
+
+// ── Idle Timer ──────────────────────────────────────────────
+var _idleListenerAttached = false;
+function startIdleTimer() {
+  var t = document.getElementById("nav-timer-container");
+  if (t) t.style.display = "block";
+  APP.idleTime = APP.IDLE_LIMIT;
+  if (APP.idleInterval) { clearInterval(APP.idleInterval); APP.idleInterval = null; }
+  APP.idleInterval = setInterval(function() {
+    APP.idleTime--;
+    var m = Math.floor(APP.idleTime/60), s = APP.idleTime%60;
+    var d = document.getElementById("idle-timer-display");
+    if (d) d.innerText = String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0");
+    var b = document.getElementById("timer-badge");
+    if (b) b.classList.toggle("urgent", APP.idleTime <= 60);
+    if (APP.idleTime <= 0) {
+      clearInterval(APP.idleInterval); APP.idleInterval = null;
+      showToast("Session หมดอายุ — กำลังออกจากระบบ...", "warning");
+      setTimeout(function() { if (APP.user) logout(); }, 2000);
+    }
+  }, 1000);
+  if (!_idleListenerAttached) {
+    _idleListenerAttached = true;
+    ["mousemove","keydown","scroll","click","touchstart"].forEach(function(ev) {
+      document.addEventListener(ev, function() {
+        if (APP.user && APP.idleInterval) APP.idleTime = APP.IDLE_LIMIT;
+      }, {passive:true});
+    });
+  }
+}
+function stopIdleTimer() {
+  if (APP.idleInterval) { clearInterval(APP.idleInterval); APP.idleInterval = null; }
+  var t = document.getElementById("nav-timer-container"); if (t) t.style.display = "none";
+}
+
+// ── Navbar ──────────────────────────────────────────────────
+function updateNavbar() {
+
+  function buildLinks(container) {
+    if (!container) return;
+    var html = '<a class="qa-nav-btn" onclick="switchView(\'view-home\')" style="cursor:pointer;"><i class="bi bi-house-door-fill"></i> หน้าแรก</a>';
+    
+    if (APP.user && APP.user.role === "admin") {
+      html += '<a class="qa-nav-btn" onclick="goToVerifyManager()" style="cursor:pointer;"><i class="bi bi-person-video2"></i> ตรวจสอบ Manager</a>';
+      html += '<a class="qa-nav-btn" onclick="goToAdminDashboard()" style="cursor:pointer;"><i class="bi bi-gear-fill"></i> Admin Panel</a>';
+    }
+      
+    if (APP.user && APP.user.role === "manager") {
+      html += '<a class="qa-nav-btn" onclick="goToManagerDashboard()" style="cursor:pointer;"><i class="bi bi-person-lines-fill"></i> Dashboard</a>';
+      
+      // ถ้า Manager มีสิทธิ์ "edit" ให้แสดงปุ่มกรอกข้อมูลด้วย
+      if (APP.user.profile && APP.user.profile.permission === "edit") {
+        html += '<a class="qa-nav-btn" onclick="goToUserForm()" style="cursor:pointer;"><i class="bi bi-pencil-square"></i> กรอกข้อมูล</a>';
+      }
+    }
+      
+    if (APP.user && (APP.user.role === "user" || APP.user.role === "admin")) {
+      html += '<a class="qa-nav-btn" onclick="goToUserForm()" style="cursor:pointer;"><i class="bi bi-pencil-square"></i> กรอกข้อมูล</a>';
+    }
+      
+    container.innerHTML = html;
+  }
+
+  var authBtn   = document.getElementById("nav-auth-btn");
+  var logoutBtn = document.getElementById("nav-logout-btn");
+  var userInfo  = document.getElementById("nav-user-info");
+  if (APP.user) {
+    if (authBtn)   authBtn.classList.add("d-none");
+    if (logoutBtn) logoutBtn.classList.remove("d-none");
+    if (userInfo)  userInfo.style.display = "flex";
+    var profile  = APP.user.profile;
+    var fullName = profile
+      ? ((profile.prefix||"")+(profile.fname||"")+" "+(profile.lname||"")).trim()
+      : (APP.user.fullName || APP.user.email);
+    var nm = document.getElementById("nav-username-display");
+    if (nm) nm.innerText = fullName;
+    var rb = document.getElementById("nav-role-badge");
+    if (rb) rb.innerText = ({admin:"Admin",manager:"Manager",user:"User"}[APP.user.role]) || APP.user.role;
+  } else {
+    if (authBtn)   authBtn.classList.remove("d-none");
+    if (logoutBtn) logoutBtn.classList.add("d-none");
+    if (userInfo)  userInfo.style.display = "none";
+  }
+  buildLinks(document.getElementById("nav-main-links"));
+  buildLinks(document.getElementById("nav-mobile-links"));
+}
+function toggleMobileSidebar() {
+  var sb = document.getElementById("mobile-sidebar");
+  if (sb) sb.classList.toggle("open");
+}
+function switchView(id) {
+  document.querySelectorAll(".view-section").forEach(function(el) { el.classList.remove("active-view"); });
+  var v = document.getElementById(id); if (v) v.classList.add("active-view");
+  var sb = document.getElementById("mobile-sidebar"); if (sb) sb.classList.remove("open");
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+function logout() {
+  clearSession(); stopIdleTimer(); APP.activeRole = "";
+  updateNavbar(); switchView("view-home");
+  showToast("ออกจากระบบเรียบร้อย", "success");
+}
+
+// ── Navigation shortcuts ─────────────────────────────────────
+function goToAdminDashboard() {
+  switchView("view-admin-dashboard");
+  var em = document.getElementById("admin-email-display");
+  if (em) em.innerText = "Admin: " + (APP.user ? APP.user.email : "");
+  switchAdminTab("tab-overview");
+  if (!APP._dataLoaded) return;
+  _setupAdminPanel();
+}
+
+function _setupAdminPanel() {
+  setupAdminYearSelects(); 
+  renderAdminDashboard(); 
+  
+  // ✅ 1. สั่งให้วาดตาราง Department ทั้งหมด และช่องเลือก Section ทันทีที่โหลดหน้า
+  renderDepartmentList(); 
+  if (typeof populateDeptSectionsCheckboxes === 'function') {
+    populateDeptSectionsCheckboxes([]); 
+  }
+  
+  renderSectionList(); 
+  renderFormList();
+  renderSettingsYearList(); 
+  populateFormSectionDropdown();
+  populateSectionFormCheckboxes([]); 
+  
+
+  // ✅ 2. สั่งให้วาดช่องเลือก Department และ Section สำหรับการเพิ่มบุคลากร
+  if (typeof buildDeptChips === 'function') buildDeptChips("mgr-dept-checkboxes", []);
+  if (typeof buildSectionChips === 'function') buildSectionChips("mgr-sections-checkboxes", []); // <-- เพิ่มบรรทัดนี้เข้าไปครับ
+  /*// ✅ 2. สั่งให้วาดช่องเลือก Department สำหรับการเพิ่ม Manager 
+  if (typeof buildDeptChips === 'function') {
+    buildDeptChips("mgr-dept-checkboxes", []);
+  }*/
+  
+  populateSettingsSectionsCheckboxes([]); 
+  populateExportYearSelect(); 
+  loadAllUsers(); 
+  loadVisitStats();
+  
+  if (typeof initSearchableSelects === 'function') initSearchableSelects();
+}
+
+/*
+function _setupAdminPanel() {
+  setupAdminYearSelects(); renderAdminDashboard(); renderSectionList(); renderFormList();
+  renderSettingsYearList(); populateFormSectionDropdown();
+  populateSectionFormCheckboxes(); buildDeptChips("mgr-dept-checkboxes", []);
+  populateSettingsSectionsCheckboxes(); populateExportYearSelect(); loadAllUsers(); loadVisitStats();
+  if (typeof initSearchableSelects === 'function') initSearchableSelects();
+}*/
+
+
+function goToManagerDashboard() { setupManagerYearSelect(); switchView("view-manager-dashboard"); renderManagerDashboard(); }
+function goToUserForm()         { setupUserYearSelect(); switchView("view-user-dashboard"); loadUserSections(); }
+
+// ── Year selects ─────────────────────────────────────────────
+function setupYearSelects() {
+  var sel = document.getElementById("public-year-select"); if (!sel) return;
+  sel.innerHTML = "";
+  if (!APP.settings.length) { sel.innerHTML = '<option>ยังไม่มีปี</option>'; return; }
+  APP.settings.forEach(function(s) { sel.add(new Option("ปีการศึกษา " + s.year, s.year)); });
+}
+function setupAdminYearSelects() {
+  var el = document.getElementById("admin-year-select"); if (!el) return;
+  el.innerHTML = "";
+  if (!APP.settings.length) { el.innerHTML = '<option value="">ยังไม่มี</option>'; return; }
+  APP.settings.forEach(function(s) { el.add(new Option("ปีการศึกษา " + s.year, s.year)); });
+}
+function setupUserYearSelect() {
+  var sel = document.getElementById("user-year-select"); if (!sel) return;
+  sel.innerHTML = "";
+  var list = APP.activeRole === "admin_acting_as_user" ? APP.settings : APP.settings.filter(function(s){ return s.isOpen; });
+  if (!list.length) { sel.innerHTML = '<option>ไม่มีปีที่เปิดรับ</option>'; return; }
+  list.forEach(function(s) {
+    var label = APP.activeRole === "admin_acting_as_user" ? s.year + " (Admin Mode)" : "ปีการศึกษา " + s.year;
+    sel.add(new Option(label, s.year));
+  });
+}
+function setupManagerYearSelect() {
+  var sel = document.getElementById("mgr-year-select"); if (!sel) return;
+  sel.innerHTML = "";
+  if (!APP.settings.length) { sel.innerHTML = '<option>ยังไม่มี</option>'; return; }
+  APP.settings.forEach(function(s) { sel.add(new Option("ปีการศึกษา " + s.year, s.year)); });
+}
+function populateExportYearSelect() {
+  var sel = document.getElementById("export-year-select"); if (!sel) return;
+  sel.innerHTML = '<option value="">-- เลือกปีการศึกษา --</option>';
+  APP.settings.forEach(function(s) { sel.add(new Option("ปีการศึกษา " + s.year, s.year)); });
+}
+
+// ── OPTIMIZED INIT ────────────────────────────────────────────
+// Strategy:
+// 1. Apply cached theme instantly (no flash)
+// 2. Show skeleton loading state
+// 3. Fire ONE server call to get everything
+// 4. Render on completion
+document.addEventListener("DOMContentLoaded", function() {
+  // Apply theme immediately from cache (prevents flash)
+  var savedTheme = localStorage.getItem("qa_theme") || "light";
+  document.documentElement.setAttribute("data-theme", savedTheme);
+  _applyThemeMode(savedTheme);
+  _loadCachedTheme();
+
+  updateNavbar();
+
+  // Show loading skeleton on home
+  var grid = document.getElementById("public-section-grid");
+  if (grid) {
+    var skeletons = "";
+    for (var i = 0; i < 6; i++) {
+      skeletons += '<div class="qa-sec-card" style="animation:pulse 1.4s ease-in-out infinite '+(i*0.1)+'s;">'
+        + '<div style="height:40px;width:40px;border-radius:9px;background:var(--border-2);margin-bottom:10px;"></div>'
+        + '<div style="height:14px;background:var(--border-2);border-radius:4px;margin-bottom:6px;width:80%;"></div>'
+        + '<div style="height:10px;background:var(--border);border-radius:4px;width:50%;"></div>'
+        + '</div>';
+    }
+    grid.innerHTML = skeletons;
+  }
+
+  // Restore user from session
+  if (APP.user) { startIdleTimer(); }
+
+  // SINGLE server round-trip for everything
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.success) {
+        APP.settings  = res.settings  || [];
+        APP.dashboard = res.dashboard || [];
+        APP.sections  = res.sections  || [];
+        APP.departments = res.departments || [];
+        APP.forms     = res.forms     || [];
+        APP.theme     = res.theme     || {};
+        APP.visits    = res.visits    || {};
+        APP.iqaMapping = res.iqaMapping || {}; // รับค่า Mapping จากตารางแยก
+        APP._dataLoaded = true;
+        // ลบส่วนที่เคยดึง iqaMapping ออกจาก APP.theme
+        if (APP.theme && Object.keys(APP.theme).length) applyThemeData(APP.theme);
+      }
+      onDataLoaded();
+    })
+    .withFailureHandler(function(err) {
+      showToast("โหลดข้อมูลไม่สำเร็จ: " + (err.message||err), "danger");
+      onDataLoaded(); // Still render with empty state
+    })
+    .loadInitialData();
+});
+
+function onDataLoaded() {
+  setupYearSelects();
+  renderPublicDashboard();
+  populateRegisterSections();
+  renderDeadlineBanner();
+  var vc = document.getElementById("visit-count");
+  if (vc) vc.innerText = (APP.visits && APP.visits.today) || 0;
+  if (APP.user && APP._dataLoaded) _routeRestore();
+}
+
+function _routeRestore() {
+  if (!APP.user) return;
+  if (APP.user.role === "admin") {
+    _setupAdminPanel();
+  } else if (APP.user.role === "manager") {
+    setupManagerYearSelect(); renderManagerDashboard();
+  } else if (APP.user.role === "user" || APP.activeRole === "admin_acting_as_user") {
+    setupUserYearSelect(); loadUserSections();
+  }
+}
+
+// ── Refresh (lightweight — only re-fetch what changed) ──────
+function refreshAllData(cb) {
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.success) {
+        APP.settings    = res.settings    || [];
+        APP.dashboard   = res.dashboard   || [];
+        APP.sections    = res.sections    || [];
+        APP.departments = res.departments || []; // ✅ รับข้อมูล Department เข้ามาเก็บไว้
+        APP.forms       = res.forms       || [];
+        APP.visits      = res.visits      || {};
+        APP._dataLoaded = true;
+        if (res.theme && Object.keys(res.theme||{}).length) {
+          APP.theme = res.theme;
+          applyThemeData(res.theme);
+          if (res.theme.iqaMapping) {
+            try { APP.iqaMapping = JSON.parse(res.theme.iqaMapping); } catch(e) { APP.iqaMapping = {}; }
+          }
+        }
+      }
+      if (typeof cb === "function") cb();
+    })
+    .withFailureHandler(function(err) {
+      showToast("รีเฟรชไม่สำเร็จ: " + (err.message||err), "danger");
+      if (typeof cb === "function") cb();
+    })
+    .loadInitialData();
+}
+</script>

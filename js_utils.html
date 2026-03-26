@@ -1,0 +1,258 @@
+<script>
+// ============================================================
+// js_utils.html — Utility functions (UPDATED)
+// ============================================================
+function escHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function showToast(msg, type) {
+  type = type || "info";
+  var c = document.getElementById("toast-cont");
+  if (!c) {
+    c = document.createElement("div");
+    c.id = "toast-cont";
+    c.style.cssText = "position:fixed;bottom:22px;right:22px;z-index:9999;display:flex;flex-direction:column;gap:8px;max-width:360px;";
+    document.body.appendChild(c);
+  }
+  var icons  = {success:"bi-check-circle-fill",danger:"bi-x-circle-fill",warning:"bi-exclamation-triangle-fill",info:"bi-info-circle-fill"};
+  var colors = {success:"qa-alert-success",danger:"qa-alert-danger",warning:"qa-alert-warning",info:"qa-alert-info"};
+  var t = document.createElement("div");
+  t.className = "qa-alert " + (colors[type]||"qa-alert-info");
+  t.style.cssText = "box-shadow:var(--shadow-lg);animation:fadeUp .3s ease;";
+  t.innerHTML = '<i class="bi ' + (icons[type]||"bi-info-circle-fill") + '"></i><span>' + escHtml(String(msg)) + '</span>';
+  c.appendChild(t);
+  setTimeout(function() { t.style.opacity="0"; t.style.transition="opacity .4s"; setTimeout(function(){t.remove();},400); }, 4500);
+}
+function toThaiDate(iso, withTime) {
+  if (!iso) return "-";
+  var d = new Date(iso); if (isNaN(d.getTime())) return "-";
+  var dd=String(d.getDate()).padStart(2,"0"), mm=String(d.getMonth()+1).padStart(2,"0"), yy=d.getFullYear()+543;
+  if (withTime) return dd+"/"+mm+"/"+yy+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+  return dd+"/"+mm+"/"+yy;
+}
+function updateDatePreview() {
+  var s=(document.getElementById("admin-start")||{}).value||"", e=(document.getElementById("admin-end")||{}).value||"";
+  var sp=document.getElementById("start-th-preview"), ep=document.getElementById("end-th-preview");
+  if(sp&&s) sp.innerText="→ "+toThaiDate(s); if(ep&&e) ep.innerText="→ "+toThaiDate(e);
+}
+function autoExpand(el) { el.style.height="auto"; el.style.height=el.scrollHeight+"px"; }
+function _el(id) { return document.getElementById(id); }
+
+// ── Chip Grid (3-4 col) ───────────────────────────────────────
+// ── ระบบกล่องเลือกแบบพับได้ (Accordion Chip Grid) ─────────────────────────
+// ── ระบบกล่องเลือกแบบพับได้ (Accordion Chip Grid) ─────────────────────────
+function _renderChipItems(items, sel, extraClass) {
+  if (!items || !items.length) return '<div class="qa-chip-empty"><i class="bi bi-inbox me-2"></i>ยังไม่มีรายการ</div>';
+  return items.map(function(item) {
+    var isSelected = sel.indexOf(item.id) >= 0;
+    var bgStyle = isSelected ? 'background:'+item.color+';color:white;border-color:'+item.color+';' : 'background:var(--surface);';
+    var iconBg = isSelected ? 'rgba(255,255,255,.25)' : item.color+'22';
+    var iconColor = isSelected ? 'white' : item.color;
+    
+    var iconHtml = item.icon
+      ? '<span class="qa-chip-icon" style="background:'+iconBg+';color:'+iconColor+';"><i class="bi '+escHtml(item.icon)+'"></i></span>'
+      : '';
+      
+    return '<button type="button" class="qa-chip-btn'+(isSelected?' selected':'')+'"'
+      + ' data-id="'+escHtml(item.id)+'" data-label="'+escHtml(item.label)+'"'
+      + ' data-color="'+item.color+'" data-icon="'+escHtml(item.icon)+'"'
+      + (extraClass?' data-cls="'+extraClass+'"':'')
+      + ' style="'+bgStyle+'"'
+      + ' onclick="toggleChip(this)">'
+      + iconHtml
+      + '<span>'+escHtml(item.label)+'</span>'
+      + (isSelected?'<i class="bi bi-check2 qa-chip-check" style="margin-left:auto;flex-shrink:0;"></i>':'')
+      + '</button>';
+  }).join('');
+}
+
+function buildChipGrid(containerId, items, selectedValues, opts) {
+  opts = opts || {};
+  var sel = selectedValues || [];
+  var container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.classList.remove("qa-check-grid");
+  container.style.cssText = "display:block; padding:0; border:none; background:transparent;";
+
+  var uid = containerId+"_chips";
+  var searchId = containerId+"_search";
+  var collapseId = containerId+"_collapse";
+  var chevronId = containerId+"_chevron";
+  var badgeId = containerId+"_badge";
+  var summaryId = containerId+"_summary";
+  
+  var title = opts.title || "คลิกเพื่อเลือกรายการ";
+  
+  var secCount = sel.length;
+  var secBadge = secCount > 0 
+      ? '<span style="background:var(--success-l); color:var(--success); padding:2px 9px; border-radius:20px; font-size:.67rem; font-weight:700;"><i class="bi bi-check-circle-fill me-1"></i>เลือก '+secCount+' รายการ</span>'
+      : '<span style="background:var(--info-l); color:var(--info); padding:2px 9px; border-radius:20px; font-size:.67rem; font-weight:700;">ไม่ได้เลือก (ให้สิทธิ์ทั้งหมด)</span>';
+
+  var summaryChips = "";
+  if (secCount > 0) {
+      summaryChips = items.filter(function(item){ return sel.includes(item.id); }).map(function(item) {
+          return '<button type="button" class="qa-chip-btn selected" style="pointer-events:none; padding:4px 10px; width:auto; background:'+item.color+'; border-color:'+item.color+'; color:white;"><span class="qa-chip-icon" style="background:rgba(255,255,255,.25); color:white;"><i class="bi '+escHtml(item.icon)+'"></i></span><span>'+escHtml(item.label)+'</span></button>';
+      }).join("");
+  }
+
+  var isHidden = true;
+  
+  var html = '<style>'
+    + '#' + uid + ' { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; max-height: 280px; overflow-y: auto; padding: 12px; background: var(--surface-3); border-radius: 0 0 var(--r-sm) var(--r-sm); border: 1.5px solid var(--border); border-top: none; }'
+    + '#' + uid + ' .qa-chip-btn { width: 100%; justify-content: flex-start; padding: 8px 12px; }'
+    + '.qa-generic-accordion-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--surface-3); border: 1.5px solid var(--border); border-radius: var(--r-sm); cursor: pointer; user-select: none; transition: background var(--tr); }'
+    + '.qa-generic-accordion-head:hover { background: var(--primary-ul); }'
+    + '</style>'
+    + '<div class="qa-chip-wrap" style="width: 100%;">'
+    + '  <div class="qa-generic-accordion-head" onclick="toggleGenericAccordion(\''+collapseId+'\', \''+chevronId+'\', \''+containerId+'\')">'
+    + '    <i class="bi bi-chevron-right" id="'+chevronId+'" style="transition:0.2s; color:var(--txt-muted);'+(isHidden?'':'transform:rotate(90deg);')+'"></i>'
+    + '    <span style="flex:1; cursor:pointer; margin-top:2px; font-size:.82rem; font-weight:700; color:var(--txt-2);">'+title+'</span>'
+    + '    <span id="'+badgeId+'">'+secBadge+'</span>'
+    + '  </div>'
+    + '  <div id="'+collapseId+'" style="display:'+(isHidden?'none':'block')+';">'
+    + '    <div style="display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1.5px solid var(--border); border-bottom: none; border-radius: 0; padding: 10px 14px;">'
+    + '      <i class="bi bi-search" style="color:var(--txt-muted);"></i>'
+    + '      <input type="text" id="'+searchId+'" placeholder="พิมพ์ค้นหา..." oninput="filterChips(\''+uid+'\',this.value)" style="border: none; background: transparent; outline: none; color: var(--txt); font-size: .88rem; width: 100%;">'
+    + '    </div>'
+    + '    <div class="qa-chip-grid" id="'+uid+'">'
+    +        _renderChipItems(items, sel, opts.className||"")
+    + '    </div>'
+    + '  </div>'
+    + '  <div id="'+summaryId+'" style="display:'+(secCount>0 && isHidden ?'flex':'none')+'; flex-wrap:wrap; gap:6px; margin-top:8px; padding:0;">'+summaryChips+'</div>'
+    + '</div>';
+    
+  container.innerHTML = html;
+}
+
+function toggleChip(el) {
+  var isNowSelected = !el.classList.contains("selected");
+  el.classList.toggle("selected", isNowSelected);
+  
+  var color = el.getAttribute("data-color") || "var(--primary)";
+  var iconEl = el.querySelector(".qa-chip-icon");
+  
+  if (isNowSelected) {
+    el.style.background = color;
+    el.style.borderColor = color;
+    el.style.color = "#fff";
+    if (iconEl) { iconEl.style.background = "rgba(255,255,255,.25)"; iconEl.style.color = "#fff"; }
+    if (!el.querySelector(".qa-chip-check")) {
+      var ck = document.createElement("i");
+      ck.className = "bi bi-check2 qa-chip-check";
+      ck.style.cssText = "margin-left:auto;flex-shrink:0;";
+      el.appendChild(ck);
+    }
+  } else {
+    el.style.background = "var(--surface)";
+    el.style.borderColor = "var(--glass-border)";
+    el.style.color = "var(--txt)";
+    if (iconEl) { iconEl.style.background = color+"22"; iconEl.style.color = color; }
+    var ck = el.querySelector(".qa-chip-check");
+    if (ck) ck.remove();
+  }
+
+  var container = el.closest('.qa-chip-wrap');
+  if (container) {
+     var grid = container.querySelector('.qa-chip-grid');
+     if (grid) {
+         var baseId = grid.id.replace("_chips", "");
+         updateGenericSummary(baseId);
+     }
+  }
+}
+
+function toggleGenericAccordion(collapseId, chevronId, containerId) {
+  var collapseDiv = document.getElementById(collapseId);
+  var chevron = document.getElementById(chevronId);
+  if (!collapseDiv) return;
+  var isHidden = collapseDiv.style.display === "none";
+  collapseDiv.style.display = isHidden ? "block" : "none";
+  if (chevron) chevron.style.transform = isHidden ? "rotate(90deg)" : "";
+  updateGenericSummary(containerId);
+}
+
+function updateGenericSummary(containerId) {
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  var selectedChips = container.querySelectorAll(".qa-chip-btn.selected");
+  var secCount = selectedChips.length;
+  
+  var badge = document.getElementById(containerId+"_badge");
+  if (badge) {
+      badge.innerHTML = secCount > 0 
+        ? '<span style="background:var(--success-l); color:var(--success); padding:2px 9px; border-radius:20px; font-size:.67rem; font-weight:700;"><i class="bi bi-check-circle-fill me-1"></i>เลือก '+secCount+' รายการ</span>'
+        : '<span style="background:var(--info-l); color:var(--info); padding:2px 9px; border-radius:20px; font-size:.67rem; font-weight:700;">ไม่ได้เลือก (ให้สิทธิ์ทั้งหมด)</span>';
+  }
+  var summaryDiv = document.getElementById(containerId+"_summary");
+  var collapseDiv = document.getElementById(containerId+"_collapse");
+  if (summaryDiv) {
+      if (secCount > 0) {
+          var summaryHtml = Array.from(selectedChips).map(function(btn) {
+              var name = btn.getAttribute("data-label") || btn.innerText;
+              var color = btn.getAttribute("data-color");
+              var icon = btn.getAttribute("data-icon");
+              var iconHtml = icon ? '<span class="qa-chip-icon" style="background:rgba(255,255,255,.25); color:white;"><i class="bi '+escHtml(icon)+'"></i></span>' : '';
+              return '<button type="button" class="qa-chip-btn selected" style="pointer-events:none; padding:4px 10px; width:auto; background:'+color+'; border-color:'+color+'; color:white;">'+iconHtml+'<span>'+escHtml(name)+'</span></button>';
+          }).join("");
+          summaryDiv.innerHTML = summaryHtml;
+          summaryDiv.style.display = (collapseDiv && collapseDiv.style.display === "none") ? "flex" : "none";
+      } else {
+          summaryDiv.style.display = "none";
+          summaryDiv.innerHTML = "";
+      }
+  }
+}
+
+function filterChips(uid, query) {
+  var grid = document.getElementById(uid); if (!grid) return;
+  var q = query.toLowerCase().trim();
+  grid.querySelectorAll(".qa-chip-btn").forEach(function(btn) {
+    var label = (btn.getAttribute("data-label")||"").toLowerCase();
+    btn.style.display = (!q || label.indexOf(q) >= 0) ? "" : "none";
+  });
+}
+
+function getSelectedChips(containerId) {
+  var container = document.getElementById(containerId); 
+  if (!container) {
+      container = document.getElementById(containerId + "_chips");
+      if(!container) return [];
+  }
+  var selected = [];
+  container.querySelectorAll(".qa-chip-btn.selected, .qa-chip.selected").forEach(function(btn) {
+    selected.push(btn.getAttribute("data-id") || btn.getAttribute("data-val") || "");
+  });
+  return selected.filter(Boolean);
+}
+
+function buildSectionChips(containerId, selectedIds) {
+  var items = (APP.sections||[]).filter(function(s){ return s.isActive; }).map(function(s) {
+    var hex = "#2563eb";
+    if (typeof COLORS !== 'undefined') { for (var k=0;k<COLORS.length;k++){if(COLORS[k].v===s.colorClass){hex=COLORS[k].h;break;}} }
+    if (s.customColor) hex = s.customColor;
+    return {id:s.sectionId, label:s.sectionName, icon:s.iconClass||"bi-folder", color:hex};
+  });
+  buildChipGrid(containerId, items, selectedIds||[], { title: "คลิกเพื่อเลือก Section (งานย่อย)" });
+}
+
+function buildFormChips(containerId, selectedIds) {
+  var items = (APP.forms||[]).filter(function(f){ return f.isActive; }).map(function(f) {
+    return {id:f.formId, label:f.formName, icon:"bi-ui-checks-grid", color:"var(--primary)"};
+  });
+  buildChipGrid(containerId, items, selectedIds||[], { title: "คลิกเพื่อเลือก Form" });
+}
+
+function buildDeptChips(containerId, selectedDeptIds) {
+  var active = (APP.departments || []).filter(function(d){ return d.isActive; });
+  var items = active.map(function(d) {
+    var hex = "#4338ca";
+    if (typeof COLORS !== 'undefined') { for (var k=0;k<COLORS.length;k++){if(COLORS[k].v===d.colorClass){hex=COLORS[k].h;break;}} }
+    return { id: d.deptId, label: d.deptName, icon: d.iconClass||"bi-building", color: hex };
+  });
+  buildChipGrid(containerId, items, selectedDeptIds||[], { title: "คลิกเพื่อเลือก Department (ฝ่าย)" });
+}
+
+
+</script>

@@ -1,0 +1,549 @@
+<script>
+// ============================================================
+// js_formbuilder.html — Form Builder v2 (Fixed)
+// ============================================================
+
+var _fbFields = [];
+
+function _fbId() { return "f" + Date.now() + Math.random().toString(36).slice(2,6); }
+
+function _fbLoadForm(formId) {
+  var form = null;
+  for (var i=0;i<APP.forms.length;i++){if(APP.forms[i].formId===formId){form=APP.forms[i];break;}}
+  if (!form) return;
+  clearFormBuilder();
+  document.getElementById("form-id-hidden").value  = form.formId;
+  document.getElementById("form-name").value        = form.formName;
+  if (document.getElementById("form-desc")) document.getElementById("form-desc").value = form.description||"";
+  if (document.getElementById("form-note")) document.getElementById("form-note").value  = form.note||"";
+
+  _fbFields = (form.fields||[]).map(function(f) {
+    return { id:_fbId(), type:f.type||"text", label:f.label||"", required:!!f.required,
+      desc:f.desc||"", placeholder:f.placeholder||"", options:f.options||"",
+      columns:f.columns||"", sectionIds:f.sectionIds||[], items:f.items||[],
+      imageData:f.imageData||"", tableDef:f.tableDef||null };
+  });
+  if (typeof _fbRenderAll === 'function') _fbRenderAll(); 
+  _fbUpdatePreview();
+  var btn = document.getElementById("btn-save-form");
+  if (btn) btn.innerHTML = '<i class="bi bi-pencil-fill me-1"></i>อัปเดต Form';
+  switchAdminTab("tab-forms");
+}
+
+function fbAddField() {
+  _fbFields.push({ id:_fbId(), type:"text", label:"", required:false, desc:"",
+    placeholder:"", options:"", columns:"", sectionIds:[], items:[], imageData:"", tableDef:null });
+  if (typeof _fbRenderAll === 'function') _fbRenderAll(); 
+  _fbUpdatePreview();
+  var list = document.getElementById("fb-field-list");
+  if (list && list.lastElementChild) list.lastElementChild.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+function fbCopyField(fid) {
+  var src=null, idx=-1;
+  for(var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){src=_fbFields[i];idx=i;break;}}
+  if(!src) return;
+  var clone = JSON.parse(JSON.stringify(src)); clone.id=_fbId(); clone.label+=" (สำเนา)";
+  _fbFields.splice(idx+1,0,clone); 
+  if (typeof _fbRenderAll === 'function') _fbRenderAll(); 
+  _fbUpdatePreview();
+}
+function fbRemoveField(fid) {
+  _fbFields = _fbFields.filter(function(f){return f.id!==fid;});
+  if (typeof _fbRenderAll === 'function') _fbRenderAll(); 
+  _fbUpdatePreview();
+}
+function fbMoveField(fid, dir) {
+  var idx=-1; for(var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){idx=i;break;}}
+  if(idx<0)return; var ni=idx+dir; if(ni<0||ni>=_fbFields.length)return;
+  var tmp=_fbFields[idx]; _fbFields[idx]=_fbFields[ni]; _fbFields[ni]=tmp;
+  if (typeof _fbRenderAll === 'function') _fbRenderAll(); 
+  _fbUpdatePreview();
+}
+
+function _fbRenderAll() {
+  var list = document.getElementById("fb-field-list"); if (!list) return;
+  if (!_fbFields.length) {
+    list.innerHTML = '<div class="fb-empty"><i class="bi bi-columns-gap"></i><p>กด "เพิ่มฟิลด์" เพื่อเริ่มสร้างฟอร์ม</p></div>';
+    return;
+  }
+  list.innerHTML = _fbFields.map(function(f,fi){ return _buildFieldItemHTML(f,fi); }).join("");
+}
+
+// ✅ 2. วาดส่วนให้ Section ใดกรอก (ระดับฟิลด์ย่อย) ให้มี Accordion ในตัว
+function _buildFieldItemHTML(f, fi) {
+  var types = [
+    ["text","📝 ข้อความ"],["number","🔢 ตัวเลข"],["textarea","📄 ข้อความยาว"],
+    ["date","📅 วันที่"],["select","📋 Dropdown"],["checkbox-group","☑️ Checkbox Group"],
+    ["toggle-group","🔘 Toggle Group"],["table","📊 ตาราง"],
+    ["link","🔗 ลิงก์ URL"],["money","💰 จำนวนเงิน"],["image","🖼️ รูปภาพ"],
+    ["divider","─── คั่นส่วน"]
+  ];
+  var typeOpts = types.map(function(t){
+    return '<option value="'+t[0]+'"'+(f.type===t[0]?" selected":"")+'>'+t[1]+'</option>';
+  }).join("");
+
+  var activeSecs = APP.sections.filter(function(s){return s.isActive;});
+  var secCount = (f.sectionIds||[]).length;
+  var secBadge = secCount > 0 
+      ? '<span style="background:var(--success-l); color:var(--success); padding:2px 9px; border-radius:20px; font-size:.67rem; font-weight:700;"><i class="bi bi-check-circle-fill me-1"></i>เลือก '+secCount+' รายการ</span>'
+      : '<span style="background:var(--info-l); color:var(--info); padding:2px 9px; border-radius:20px; font-size:.67rem; font-weight:700;">ไม่ได้เลือก (ให้สิทธิ์ทั้งหมด)</span>';
+
+  var summaryChips = "";
+  if (secCount > 0) {
+      summaryChips = activeSecs.filter(function(s){ return (f.sectionIds||[]).includes(s.sectionId); }).map(function(s) {
+          var hex = "#2563eb";
+          if (typeof COLORS !== 'undefined') { for (var k=0; k<COLORS.length; k++){ if(COLORS[k].v===s.colorClass){ hex=COLORS[k].h; break; } } }
+          if (s.customColor) hex = s.customColor;
+          var icon = s.iconClass || "bi-folder";
+          return '<button type="button" class="qa-chip-btn selected" style="pointer-events:none; padding:4px 10px; width:auto; background:'+hex+'; border-color:'+hex+'; color:white;"><span class="qa-chip-icon" style="background:rgba(255,255,255,.25); color:white;"><i class="bi '+escHtml(icon)+'"></i></span><span>'+escHtml(s.sectionName)+'</span></button>';
+      }).join("");
+  }
+
+  var secChips = activeSecs.length
+    ? activeSecs.map(function(s){
+        var isChk = (f.sectionIds||[]).indexOf(s.sectionId)>=0;
+        
+        var hex = "#2563eb";
+        if (typeof COLORS !== 'undefined') { for (var k=0; k<COLORS.length; k++){ if(COLORS[k].v===s.colorClass){ hex=COLORS[k].h; break; } } }
+        if (s.customColor) hex = s.customColor;
+        var icon = s.iconClass || "bi-folder";
+
+        var bgStyle = isChk ? 'background:'+hex+';color:white;border-color:'+hex+';' : 'background:var(--surface);';
+        var iconBg = isChk ? 'rgba(255,255,255,.25)' : hex+'22';
+        var iconColor = isChk ? 'white' : hex;
+
+        return '<button type="button" class="qa-chip-btn'+(isChk?" selected":"")+'"'
+          +' data-val="'+escHtml(s.sectionId)+'" data-fid="'+f.id+'"'
+          +' data-label="'+escHtml(s.sectionName)+'" data-color="'+hex+'" data-icon="'+escHtml(icon)+'"'
+          +' style="padding:6px 10px; width:auto; justify-content:flex-start;'+bgStyle+'"'
+          +' onclick="_fbSecChipToggle(this)">'
+          +'<span class="qa-chip-icon" style="background:'+iconBg+';color:'+iconColor+';"><i class="bi '+escHtml(icon)+'"></i></span>'
+          +'<span>'+escHtml(s.sectionName)+'</span>'
+          +(isChk?'<i class="bi bi-check2 qa-chip-check" style="margin-left:auto;flex-shrink:0;"></i>':'')
+          +'<input type="checkbox" class="fb-sec-chk" value="'+escHtml(s.sectionId)+'"'+(isChk?" checked":"")
+          +' style="display:none;"></button>';
+      }).join("")
+    : '<span style="color:var(--txt-muted);font-size:.75rem;">ยังไม่มี Section</span>';
+
+  var typeBadgeStyle = ({
+    text:"text",number:"123",textarea:"txt",date:"date",select:"sel",
+    "checkbox-group":"chk","toggle-group":"tog",table:"tbl",
+    link:"url",money:"฿",image:"img",divider:"─"
+  })[f.type] || f.type;
+
+  var extraHTML = _fbExtraHTML(f);
+  var itemsHTML = (f.type==="checkbox-group"||f.type==="toggle-group") ? _fbItemsHTML(f) : "";
+  var imageHTML = f.type==="image" ? _fbImageHTML(f) : "";
+  var tableHTML = f.type==="table" ? (typeof _fbTableEditorSection==="function" ? _fbTableEditorSection(f) : "") : "";
+
+  return '<div class="fb-field-item" data-fid="'+f.id+'" data-type="'+f.type+'">'
+    +'<div class="fb-field-header">'
+    +'<span class="fb-field-handle"><i class="bi bi-grip-vertical"></i></span>'
+    +'<span style="background:var(--primary-ul);color:var(--primary);padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:700;flex-shrink:0;">'+typeBadgeStyle+'</span>'
+    +'<span style="flex:1;font-size:.84rem;font-weight:600;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+(f.label||'(ยังไม่มีชื่อ)')+'</span>'
+    +'<div class="fb-field-actions">'
+    +(fi>0?'<button type="button" class="qa-icon-btn" onclick="fbMoveField(\''+f.id+'\',-1)" title="ขึ้น"><i class="bi bi-arrow-up"></i></button>':'')
+    +(fi<_fbFields.length-1?'<button type="button" class="qa-icon-btn" onclick="fbMoveField(\''+f.id+'\',1)" title="ลง"><i class="bi bi-arrow-down"></i></button>':'')
+    +'<button type="button" class="qa-icon-btn" onclick="fbCopyField(\''+f.id+'\')" title="ก๊อปปี้"><i class="bi bi-copy"></i></button>'
+    +'<button type="button" class="qa-field-del" onclick="fbRemoveField(\''+f.id+'\')" title="ลบ"><i class="bi bi-trash3"></i></button>'
+    +'</div></div>'
+    +'<div class="fb-field-body">'
+    +'<div class="fb-row">'
+    +'<div class="fb-col-1"><span class="fb-mini-label">ชื่อฟิลด์</span>'
+    +'<input type="text" class="qa-input fb-label-input" value="'+escHtml(f.label)+'" placeholder="ชื่อฟิลด์..." oninput="_fbSyncOne(\''+f.id+'\');_fbUpdatePreview();"></div>'
+    +'<div class="fb-col-2"><span class="fb-mini-label">ประเภท</span>'
+    +'<select class="qa-input fb-type-select" onchange="_fbOnTypeChange(\''+f.id+'\',this.value);">'+typeOpts+'</select></div>'
+    +'</div>'
+    +(f.type!=="divider"?'<div class="fb-row"><div style="flex:1;"><span class="fb-mini-label">คำอธิบาย/ช่วยเหลือ</span>'
+    +'<input type="text" class="qa-input fb-desc-input" value="'+escHtml(f.desc)+'" placeholder="คำอธิบายสำหรับผู้กรอก..." oninput="_fbSyncOne(\''+f.id+'\');">'
+    +'</div><div style="flex-shrink:0;padding-top:20px;"><label class="qa-check-item" style="font-size:.82rem;gap:5px;">'
+    +'<input type="checkbox" class="fb-req-chk"'+(f.required?" checked":"")+'><span>บังคับกรอก</span></label>'
+    +'</div></div>':"")
+    +extraHTML+itemsHTML+imageHTML+tableHTML
+    
+    // โครงสร้าง Accordion กล่องพับ
+    +'<div class="qa-chip-wrap mt-2" style="width: 100%;">'
+    +'  <div class="qa-generic-accordion-head" onclick="toggleGenericAccordion(\'fb-sec-collapse-'+f.id+'\', \'fb-sec-chevron-'+f.id+'\', \'fb-sec-container-'+f.id+'\')">'
+    +'    <i class="bi bi-chevron-right" id="fb-sec-chevron-'+f.id+'" style="transition:0.2s; color:var(--txt-muted); transform:rotate(90deg);"></i>'
+    +'    <span style="flex:1; cursor:pointer; margin-top:2px; font-size:.82rem; font-weight:700; color:var(--txt-2);">ให้ Section ใดกรอก (ระดับฟิลด์)</span>'
+    +'    <span id="fb-sec-container-'+f.id+'_badge">'+secBadge+'</span>'
+    +'  </div>'
+    +'  <div id="fb-sec-collapse-'+f.id+'" style="display:none;">'
+    +'    <div style="display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1.5px solid var(--border); border-bottom: none; border-radius: 0; padding: 10px 14px;">'
+    +'      <i class="bi bi-search" style="color:var(--txt-muted);"></i>'
+    +'      <input type="text" placeholder="พิมพ์ค้นหา..." oninput="filterChips(\'fb-sec-grid-'+f.id+'\',this.value)" style="border: none; background: transparent; outline: none; color: var(--txt); font-size: .88rem; width: 100%;">'
+    +'    </div>'
+    +'    <div class="qa-chip-grid" id="fb-sec-grid-'+f.id+'" style="max-height:220px; padding:12px; background:var(--surface-3); border:1.5px solid var(--border); border-top:none; border-radius:0 0 var(--r-sm) var(--r-sm);">'
+    +       secChips
+    +'    </div>'
+    +'  </div>'
+    +'  <div id="fb-sec-container-'+f.id+'_summary" style="display:'+(secCount>0?'flex':'none')+'; flex-wrap:wrap; gap:6px; margin-top:8px; padding:0;">'+summaryChips+'</div>'
+    +'</div>'
+    +'</div></div>';
+}
+
+function _fbExtraHTML(f) {
+  var inp = function(ph){ return '<div class="fb-row"><div class="fb-col-1"><span class="fb-mini-label">Placeholder</span>'
+    +'<input type="text" class="qa-input fb-extra-input" value="'+escHtml(f.placeholder||"")+'" placeholder="'+ph+'" oninput="_fbSyncOne(\''+f.id+'\');_fbUpdatePreview();"></div></div>'; };
+  if (f.type==="select") return '<div class="fb-row"><div class="fb-col-1"><span class="fb-mini-label">ตัวเลือก (คั่นด้วยจุลภาค)</span>'
+    +'<input type="text" class="qa-input fb-extra-input" value="'+escHtml(f.options||"")+'" placeholder="เช่น ใช่,ไม่ใช่,ไม่ทราบ" oninput="_fbSyncOne(\''+f.id+'\');_fbUpdatePreview();"></div></div>';
+  if (f.type==="table") return ""; 
+  if (f.type==="link")   return inp("https://...");
+  if (f.type==="text"||f.type==="number"||f.type==="money") return inp("กรอกข้อมูล...");
+  return "";
+}
+
+function _fbItemsHTML(f) {
+  var isChk = f.type==="checkbox-group";
+  var items = f.items&&f.items.length ? f.items : [];
+  var rows  = items.map(function(lb,ii){
+    return '<div class="fb-item-row">'
+      +(isChk?'<i class="bi bi-square" style="color:var(--txt-muted);flex-shrink:0;"></i>':'<i class="bi bi-toggle-off" style="color:var(--txt-muted);flex-shrink:0;"></i>')
+      +'<input type="text" class="qa-input fb-item-label" value="'+escHtml(lb)+'" placeholder="ชื่อตัวเลือก" style="flex:1;" oninput="_fbSyncOne(\''+f.id+'\');_fbUpdatePreview();">'
+      +'<button type="button" class="qa-btn-danger btn-xs" onclick="_fbRemoveItem(\''+f.id+'\','+ii+')"><i class="bi bi-x"></i></button>'
+      +'</div>';
+  }).join("");
+  return '<div class="fb-items-box">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+    +'<span class="fb-mini-label mb-0">'+(isChk?"รายการ Checkbox":"รายการ Toggle")+'</span>'
+    +'<button type="button" class="qa-btn-add-field" onclick="_fbSync();_fbAddItem(\''+f.id+'\')"><i class="bi bi-plus-circle-fill me-1"></i>เพิ่ม</button>'
+    +'</div><div class="fb-items-list" id="fb-items-'+f.id+'">'+rows+'</div></div>';
+}
+
+function _fbImageHTML(f) {
+  if (f.type!=="image") return "";
+  return '<div class="fb-image-box"><span class="fb-mini-label">รูปภาพประกอบ (≤2MB)</span>'
+    +(f.imageData
+      ?'<div style="margin-top:6px;display:flex;gap:10px;align-items:center;">'
+        +'<img src="'+f.imageData+'" style="max-height:80px;max-width:160px;border-radius:8px;border:1.5px solid var(--glass-border);object-fit:contain;">'
+        +'<button type="button" class="qa-btn-danger btn-sm" onclick="_fbClearImage(\''+f.id+'\')"><i class="bi bi-trash me-1"></i>ลบ</button></div>'
+      :'<div class="fb-img-upload" onclick="document.getElementById(\'fbimg-'+f.id+'\').click();">'
+        +'<i class="bi bi-cloud-upload-fill" style="font-size:1.4rem;color:var(--primary);display:block;margin-bottom:4px;"></i>'
+        +'<span style="font-size:.78rem;">คลิกเลือกรูปภาพ</span></div>')
+    +'<input type="file" id="fbimg-'+f.id+'" accept="image/*" style="display:none;" onchange="_fbHandleImage(\''+f.id+'\',this)">'
+    +'</div>';
+}
+
+function _fbSync() {
+  var list = document.getElementById("fb-field-list"); if (!list) return;
+  list.querySelectorAll(".fb-field-item").forEach(function(item) {
+    var fid=item.dataset.fid;
+    var f=null; for(var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){f=_fbFields[i];break;}} if(!f)return;
+    var lbl=item.querySelector(".fb-label-input"); if(lbl)f.label=lbl.value;
+    var typ=item.querySelector(".fb-type-select"); if(typ)f.type=typ.value;
+    var req=item.querySelector(".fb-req-chk"); if(req)f.required=req.checked;
+    var dsc=item.querySelector(".fb-desc-input"); if(dsc)f.desc=dsc.value;
+    var ext=item.querySelector(".fb-extra-input");
+    if(ext){ if(f.type==="select")f.options=ext.value; else f.placeholder=ext.value; }
+    var sc=item.querySelectorAll(".fb-sec-chk:checked");
+    f.sectionIds=Array.prototype.slice.call(sc).map(function(e){return e.value;});
+    if(f.type==="checkbox-group"||f.type==="toggle-group"){
+      var ipts=item.querySelectorAll(".fb-item-label");
+      f.items=Array.prototype.slice.call(ipts).map(function(e){return e.value;}).filter(Boolean);
+    }
+    if(f.type==="table" && typeof _fbTableSync==="function") _fbTableSync(f.id);
+  });
+}
+
+function _fbSyncOne(fid) {
+  var list=document.getElementById("fb-field-list"); if(!list)return;
+  var item=list.querySelector('[data-fid="'+fid+'"]'); if(!item)return;
+  var f=null; for(var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){f=_fbFields[i];break;}} if(!f)return;
+  var lbl=item.querySelector(".fb-label-input"); if(lbl)f.label=lbl.value;
+  var req=item.querySelector(".fb-req-chk"); if(req)f.required=req.checked;
+  var dsc=item.querySelector(".fb-desc-input"); if(dsc)f.desc=dsc.value;
+  var ext=item.querySelector(".fb-extra-input");
+  if(ext){ if(f.type==="select")f.options=ext.value; else f.placeholder=ext.value; }
+  var sc=item.querySelectorAll(".fb-sec-chk:checked");
+  f.sectionIds=Array.prototype.slice.call(sc).map(function(e){return e.value;});
+  if(f.type==="checkbox-group"||f.type==="toggle-group"){
+    var ipts=item.querySelectorAll(".fb-item-label");
+    f.items=Array.prototype.slice.call(ipts).map(function(e){return e.value;}).filter(Boolean);
+  }
+}
+
+function _fbOnTypeChange(fid, newType) {
+  _fbSync();
+  var f=null; for(var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){f=_fbFields[i];break;}} if(!f)return;
+  f.type=newType;
+  if((newType==="checkbox-group"||newType==="toggle-group")&&(!f.items||!f.items.length)) f.items=["ตัวเลือก 1","ตัวเลือก 2"];
+  if (typeof _fbRenderAll === 'function') _fbRenderAll(); 
+  _fbUpdatePreview();
+}
+
+// ✅ 3. ปรับการทำงานเวลากดปุ่ม Section ภายใน Field ย่อย
+function _fbSecChipToggle(btn) {
+  var isActive = btn.classList.contains("selected");
+  btn.classList.toggle("selected", !isActive);
+  
+  var chk = btn.querySelector("input[type=checkbox]"); 
+  if(chk) chk.checked = !isActive;
+  
+  var color = btn.getAttribute("data-color") || "var(--primary)";
+  var iconContainer = btn.querySelector(".qa-chip-icon");
+  
+  if (!isActive) {
+      // กำลังจะถูกเลือกให้เป็น Active
+      if (iconContainer) {
+          iconContainer.style.background = "rgba(255,255,255,.25)";
+          iconContainer.style.color = "white";
+      }
+      btn.style.background = color;
+      btn.style.color = "white";
+      btn.style.borderColor = color;
+      
+      if (!btn.querySelector(".qa-chip-check")) {
+          var ck = document.createElement("i");
+          ck.className = "bi bi-check2 qa-chip-check";
+          ck.style.cssText = "margin-left:auto;flex-shrink:0;";
+          btn.insertBefore(ck, chk);
+      }
+  } else {
+      // กำลังจะถูกยกเลิกการเลือก
+      if (iconContainer) {
+          iconContainer.style.background = color + "22";
+          iconContainer.style.color = color;
+      }
+      btn.style.background = "var(--surface)";
+      btn.style.color = "var(--txt)";
+      btn.style.borderColor = "var(--glass-border)"; 
+      
+      var ck = btn.querySelector(".qa-chip-check");
+      if (ck) ck.remove();
+  }
+  
+  var fid = btn.dataset.fid;
+  if(fid){
+      _fbSyncOne(fid);
+      _fbUpdatePreview();
+      
+      // สั่งให้อัปเดตป้าย Summary โดยจำลองการทำงานเหมือน updateGenericSummary
+      var containerId = "fb-sec-container-" + fid;
+      var grid = document.getElementById("fb-sec-grid-" + fid);
+      if (grid) {
+          var selectedChips = grid.querySelectorAll(".qa-chip-btn.selected");
+          var secCount = selectedChips.length;
+          
+          var badge = document.getElementById(containerId+"_badge");
+          if (badge) {
+              badge.innerHTML = secCount > 0 
+                ? '<span style="background:var(--success-l); color:var(--success); padding:2px 9px; border-radius:20px; font-size:.67rem; font-weight:700;"><i class="bi bi-check-circle-fill me-1"></i>เลือก '+secCount+' รายการ</span>'
+                : '<span style="background:var(--info-l); color:var(--info); padding:2px 9px; border-radius:20px; font-size:.67rem; font-weight:700;">ไม่ได้เลือก (ให้สิทธิ์ทั้งหมด)</span>';
+          }
+          var summaryDiv = document.getElementById(containerId+"_summary");
+          var collapseDiv = document.getElementById("fb-sec-collapse-"+fid);
+          if (summaryDiv) {
+              if (secCount > 0) {
+                  var summaryHtml = Array.from(selectedChips).map(function(b) {
+                      var name = b.getAttribute("data-label") || b.innerText;
+                      var color = b.getAttribute("data-color");
+                      var icon = b.getAttribute("data-icon");
+                      var iconHtml = icon ? '<span class="qa-chip-icon" style="background:rgba(255,255,255,.25); color:white;"><i class="bi '+escHtml(icon)+'"></i></span>' : '';
+                      return '<button type="button" class="qa-chip-btn selected" style="pointer-events:none; padding:4px 10px; width:auto; background:'+color+'; border-color:'+color+'; color:white;">'+iconHtml+'<span>'+escHtml(name)+'</span></button>';
+                  }).join("");
+                  summaryDiv.innerHTML = summaryHtml;
+                  summaryDiv.style.display = (collapseDiv && collapseDiv.style.display === "none") ? "flex" : "none";
+              } else {
+                  summaryDiv.style.display = "none";
+                  summaryDiv.innerHTML = "";
+              }
+          }
+      }
+  }
+}
+
+function _fbAddItem(fid) {
+  var f=null; for(var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){f=_fbFields[i];break;}} if(!f)return;
+  if(!f.items)f.items=[]; f.items.push("ตัวเลือก "+(f.items.length+1));
+  if (typeof _fbRenderAll === 'function') _fbRenderAll(); 
+  _fbUpdatePreview();
+}
+function _fbRemoveItem(fid, idx) {
+  _fbSync();
+  var f=null; for(var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){f=_fbFields[i];break;}} if(!f||!f.items)return;
+  f.items.splice(idx,1); 
+  if (typeof _fbRenderAll === 'function') _fbRenderAll(); 
+  _fbUpdatePreview();
+}
+function _fbHandleImage(fid, input) {
+  var file=input.files[0]; if(!file)return;
+  if(file.size>2*1024*1024){showToast("รูปภาพต้องไม่เกิน 2MB","warning");return;}
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var img=new Image(); img.onload=function(){
+      var w=img.width,h=img.height,max=600,scale=Math.min(max/w,max/h);
+      if(w>max||h>max){w=Math.round(w*scale);h=Math.round(h*scale);}
+      var canvas=document.createElement("canvas"); canvas.width=w; canvas.height=h;
+      canvas.getContext("2d").drawImage(img,0,0,w,h);
+      var f2=null; for(var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){f2=_fbFields[i];break;}}
+      if(f2){
+        f2.imageData=canvas.toDataURL("image/png"); 
+        if (typeof _fbRenderAll === 'function') _fbRenderAll(); 
+        _fbUpdatePreview();
+      }
+    }; img.src=e.target.result;
+  }; reader.readAsDataURL(file);
+}
+function _fbClearImage(fid) {
+  var f=null; for(var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){f=_fbFields[i];break;}}
+  if(f){
+    f.imageData=""; 
+    if (typeof _fbRenderAll === 'function') _fbRenderAll(); 
+    _fbUpdatePreview();
+  }
+}
+
+function _fbUpdatePreview() {
+  var prev=document.getElementById("fb-preview-area"); if(!prev)return;
+  if(!_fbFields || !_fbFields.length){ 
+    prev.innerHTML='<div style="text-align:center;padding:32px;color:var(--txt-muted);"><i class="bi bi-layout-text-window" style="font-size:2rem;display:block;margin-bottom:8px;"></i>ตัวอย่างจะแสดงที่นี่</div>';
+    return;
+  }
+  var html='<div style="font-size:.88rem;">';
+  _fbFields.forEach(function(f){
+    try {
+      if(!f.label&&f.type!=="image"&&f.type!=="divider")return;
+      html+='<div style="margin-bottom:16px;">'; 
+      if(f.type==="divider"){ 
+        html+=(f.label?'<div style="display:flex;align-items:center;gap:10px;margin:4px 0;"><hr style="flex:1;border:none;border-top:2px solid var(--glass-border);margin:0;"><span style="font-size:.78rem;font-weight:700;color:var(--txt-3);">'+escHtml(f.label)+'</span><hr style="flex:1;border:none;border-top:2px solid var(--glass-border);margin:0;"></div>':'<hr style="border:none;border-top:2px dashed var(--glass-border);">'); 
+        html+='</div>'; return; 
+      }
+      html+='<div style="font-size:.75rem;font-weight:700;color:var(--txt-3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;">'+escHtml(f.label||"(ไม่มีชื่อ)")+(f.required?'<span style="color:var(--danger);"> *</span>':"")+' </div>';
+      if(f.desc)html+='<div style="font-size:.74rem;color:var(--info);margin-bottom:5px;"><i class="bi bi-info-circle me-1"></i>'+escHtml(f.desc)+'</div>';
+      
+      switch(f.type){
+        case "textarea": html+='<textarea class="qa-input" rows="2" disabled style="opacity:.7;width:100%;resize:none;"></textarea>'; break;
+        case "number": html+='<input type="number" class="qa-input" disabled placeholder="'+escHtml(f.placeholder||"0")+'" style="opacity:.7;width:100%;">'; break;
+        case "date": html+='<input type="date" class="qa-input" disabled style="opacity:.7;width:100%;">'; break;
+        case "select": html+='<select class="qa-input" disabled style="opacity:.7;width:100%;"><option>-- เลือก --</option>'+(f.options||"").split(",").map(function(o){return '<option>'+escHtml(o.trim())+'</option>';}).join("")+'</select>'; break;
+        case "checkbox-group":
+          var ci=(f.items&&f.items.length)?f.items:["ตัวเลือก 1","ตัวเลือก 2"];
+          html+='<div style="display:flex;flex-wrap:wrap;gap:6px;">'+ci.map(function(lb){return '<label class="qa-check-item" style="opacity:.7;pointer-events:none;"><input type="checkbox" disabled><span>'+escHtml(lb)+'</span></label>';}).join("")+'</div>'; break;
+        case "toggle-group":
+          var ti=(f.items&&f.items.length)?f.items:["ตัวเลือก 1"];
+          html+='<div style="display:flex;flex-direction:column;gap:8px;">'+ti.map(function(lb){return '<div style="display:flex;align-items:center;gap:10px;opacity:.7;"><div style="width:44px;height:22px;background:var(--glass-border);border-radius:11px;flex-shrink:0;"></div><span style="font-size:.84rem;">'+escHtml(lb)+'</span></div>';}).join("")+'</div>'; break;
+        case "table": html += (typeof _fbTablePreviewHTML==="function") ? _fbTablePreviewHTML(f) : '<div style="color:var(--txt-muted);font-size:.8rem;">ตาราง</div>'; break;
+        case "link": html+='<input type="url" class="qa-input" disabled placeholder="https://..." style="opacity:.7;width:100%;">'; break;
+        case "money": html+='<div class="qa-money-wrap" style="opacity:.7;"><span class="qa-money-prefix">฿</span><input type="number" disabled class="qa-input qa-money-input" placeholder="0.00"></div>'; break;
+        case "image": html+='<div style="border:2px dashed var(--glass-border);border-radius:8px;padding:14px;text-align:center;background:var(--glass-bg);">'+'<i class="bi bi-image-fill" style="font-size:2rem;color:var(--primary);display:block;margin-bottom:6px;"></i>'+'<div style="font-size:.78rem;color:var(--txt-muted);">ผู้ใช้จะอัพโหลดรูปที่นี่</div>'+'</div>'; break;
+        default: html+='<input type="text" class="qa-input" disabled placeholder="'+escHtml(f.placeholder||"กรอกข้อมูล...")+'" style="opacity:.7;width:100%;">';
+      }
+      if(f.sectionIds&&f.sectionIds.length){
+        var sn=f.sectionIds.map(function(sid){var s=null;for(var i=0;i<APP.sections.length;i++){if(APP.sections[i].sectionId===sid){s=APP.sections[i];break;}}return s?escHtml(s.sectionName):sid;});
+        html+='<div style="margin-top:5px;font-size:.7rem;color:var(--info);">กรอกโดย: '+sn.join(", ")+'</div>';
+      }
+      html+='</div>';
+    } catch(e) { console.error("Preview Field Error:", e); }
+  });
+  html+='</div>'; prev.innerHTML=html;
+}
+
+function _fbCollect() {
+  _fbSync();
+  return _fbFields.filter(function(f){return f.label||f.type==="image"||f.type==="divider";}).map(function(f){
+    var key=(f.label||"field").replace(/[^a-z0-9\u0E00-\u0E7F]/gi,"_").replace(/_+/g,"_").toLowerCase()+"_"+f.id.slice(-5);
+    if(f.type==="table"&&typeof _fbTableSync==="function") _fbTableSync(f.id);
+    return { key:key, label:f.label||"", type:f.type||"text", required:!!f.required,
+      desc:f.desc||"", placeholder:f.placeholder||"", options:f.options||"",
+      columns:f.columns||"", sectionIds:f.sectionIds||[], items:f.items||[],
+      imageData:f.imageData||"", tableDef:f.tableDef||null };
+  });
+}
+
+function initSearchableSelects() { }
+function _fbSyncCaption(fid, val) {
+  for (var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){_fbFields[i].caption=val;break;}}
+}
+
+function clearFormBuilder() {
+  document.getElementById("form-id-hidden").value = "";
+  document.getElementById("form-name").value = "";
+  document.getElementById("form-desc").value = "";
+  document.getElementById("form-note").value = "";
+  _fbFields = [];
+  _fbUpdatePreview();
+  if (typeof _fbRenderAll === 'function') _fbRenderAll();
+  var btn = document.getElementById("btn-save-form");
+  if(btn) btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึก Form';
+}
+
+function handleSaveForm(event) {
+  event.preventDefault();
+  var btn = document.getElementById("btn-save-form");
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...';}
+
+  var data = {
+    formId: document.getElementById("form-id-hidden").value,
+    formName: document.getElementById("form-name").value,
+    description: document.getElementById("form-desc").value,
+    note: document.getElementById("form-note").value,
+    fields: _fbCollect(),
+    isActive: true
+  };
+
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึก Form';}
+      if(res&&res.success){
+        showToast("บันทึก Form สำเร็จ","success");
+        refreshAllData(function(){ renderFormList(); clearFormBuilder(); });
+      }else showToast((res&&res.message)||"Error","danger");
+    })
+    .withFailureHandler(function(err){
+      if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-save-fill me-1"></i>บันทึก Form';}
+      showToast(err.message||err,"danger");
+    })
+    .saveForm(data);
+}
+
+function _formEditBtn(btn) {
+  var fid = btn.getAttribute("data-form-edit");
+  _fbLoadForm(fid);
+}
+
+function getFormsForSection(sec) {
+  if (!APP.forms) return [];
+  return APP.forms.filter(function(f) {
+    if (!f.isActive) return false;
+    var formSecIds = [];
+    try {
+      if (f.sectionId && String(f.sectionId).startsWith("[")) formSecIds = JSON.parse(f.sectionId);
+      else if (f.sectionId && f.sectionId !== "null" && f.sectionId !== "") formSecIds = [f.sectionId]; 
+    } catch(e) {}
+    if (formSecIds.length === 0) return true;
+    return formSecIds.indexOf(sec.sectionId) >= 0;
+  });
+}
+
+function updateFbSecSummary(fid) {
+  var f=null; for(var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){f=_fbFields[i];break;}} if(!f)return;
+  var secCount = (f.sectionIds || []).length;
+  
+  var badge = document.getElementById("fb-sec-badge-"+fid);
+  if (badge) {
+      badge.innerHTML = secCount > 0 
+          ? '<span style="background:var(--success-l); color:var(--success); padding:2px 9px; border-radius:20px; font-size:.67rem; font-weight:700;"><i class="bi bi-check-circle-fill me-1"></i>เลือก '+secCount+' Section</span>'
+          : '<span style="background:var(--info-l); color:var(--info); padding:2px 9px; border-radius:20px; font-size:.67rem; font-weight:700;"><i class="bi bi-check-all me-1"></i>ทุก Section</span>';
+  }
+
+  var summaryDiv = document.getElementById("fb-sec-summary-"+fid);
+  var collapseDiv = document.getElementById("fb-sec-collapse-"+fid);
+  if (summaryDiv) {
+      if (secCount > 0) {
+          var activeSecs = APP.sections.filter(function(s){return s.isActive;});
+          var summaryChips = activeSecs.filter(function(s){ return f.sectionIds.includes(s.sectionId); }).map(function(s) {
+              var hex = "#2563eb";
+              if (typeof COLORS !== 'undefined') { for (var k=0; k<COLORS.length; k++){ if(COLORS[k].v===s.colorClass){ hex=COLORS[k].h; break; } } }
+              if (s.customColor) hex = s.customColor;
+              var icon = s.iconClass || "bi-folder";
+              return '<button type="button" class="qa-chip-btn selected" style="pointer-events:none; padding:4px 10px; width:auto; background:'+hex+'; border-color:'+hex+'; color:white;"><span class="qa-chip-icon" style="background:rgba(255,255,255,.25); color:white;"><i class="bi '+escHtml(icon)+'"></i></span><span>'+escHtml(s.sectionName)+'</span><i class="bi bi-check2 qa-chip-check" style="margin-left:auto;flex-shrink:0;"></i></button>';
+          }).join("");
+          summaryDiv.innerHTML = summaryChips;
+          summaryDiv.style.display = (collapseDiv && collapseDiv.style.display === "none") ? "flex" : "none";
+      } else {
+          summaryDiv.style.display = "none";
+          summaryDiv.innerHTML = "";
+      }
+  }
+}
+</script>

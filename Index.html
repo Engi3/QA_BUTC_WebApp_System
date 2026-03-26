@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="light">
+<head>
+  <meta charset="UTF-8"><base target="_top">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>QA BUTC System 3.0</title>
+  <script>
+    // Anti-flash: ใช้ธีมที่บันทึกไว้ก่อน CSS render
+    (function(){
+      const t = localStorage.getItem("qa_theme") || "light";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <?!= include('css_base'); ?>
+  <?!= include('css_components'); ?>
+  <?!= include('css_patch'); ?>
+  <?!= include('css_theme'); ?>
+</head>
+<body>
+<div class="qa-bg"></div>
+<div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div>
+
+<nav class="qa-navbar" id="main-navbar">
+  <div class="qa-navbar-inner">
+    <a class="qa-brand" onclick="switchView('view-home')">
+      <img id="navbar-logo-img" src="" alt="Logo" class="qa-logo-img" style="display:none; width:36px; height:36px; border-radius:8px; object-fit:contain; background:rgba(255,255,255,.15); margin-right: 4px;">
+      <div class="qa-logo-icon" id="navbar-logo-icon"><i class="bi bi-shield-check-fill"></i></div>
+      <div>
+        <div class="qa-brand-name">QA<span class="qa-brand-accent">BUTC</span></div>
+        <div class="qa-brand-sub" id="nav-college-name">ระบบประกันคุณภาพการศึกษา</div>
+      </div>
+    </a>
+    <nav class="qa-nav-desktop ms-3" id="nav-main-links"></nav>
+    <div class="qa-navbar-right">
+      <div id="nav-timer-container" style="display:none;">
+        <span class="qa-timer-badge" id="timer-badge"><i class="bi bi-stopwatch-fill me-1"></i><span id="idle-timer-display">30:00</span></span>
+      </div>
+      <div id="nav-user-info" class="qa-user-pill" style="display:none;">
+        <div class="qa-user-av" id="nav-user-av"><i class="bi bi-person"></i></div>
+        <span id="nav-username-display" class="d-none d-sm-inline"></span>
+        <span class="qa-role-badge" id="nav-role-badge"></span>
+      </div>
+      <button class="qa-theme-btn" id="theme-toggle-btn" onclick="toggleTheme()" title="สลับธีม">
+        <i class="bi bi-sun-fill" id="icon-sun"></i>
+        <i class="bi bi-moon-fill" id="icon-moon" style="display:none;"></i>
+      </button>
+      <button class="qa-btn-primary" id="nav-auth-btn" onclick="switchView('view-login')" style="font-size:.8rem;padding:7px 14px;">
+        <i class="bi bi-lock-fill"></i> เข้าสู่ระบบ
+      </button>
+      <button class="qa-btn-ghost d-none" id="nav-logout-btn" onclick="logout()" style="font-size:.8rem;padding:7px 14px;">
+        <i class="bi bi-box-arrow-right"></i> ออก
+      </button>
+      <button class="qa-mobile-toggle" onclick="toggleMobileSidebar()"><i class="bi bi-list"></i></button>
+    </div>
+  </div>
+</nav>
+<div class="qa-mobile-sidebar" id="mobile-sidebar">
+  <ul id="nav-mobile-links" class="qa-nav-list"></ul>
+</div>
+
+<main class="qa-main">
+
+<div id="view-home" class="view-section active-view">
+  <div class="qa-hero">
+    <div class="container">
+      <div class="qa-hero-content">
+        <div class="qa-hero-badge"><i class="bi bi-award-fill me-2"></i>ระบบประกันคุณภาพการศึกษา</div>
+        <h1 class="qa-hero-title">ฐานข้อมูล QA<br><span class="qa-hero-accent" id="hero-college-name">วิทยาลัยเทคนิคบูรพาปราจีน</span></h1>
+        <p class="qa-hero-sub">ติดตามสถานะการส่งข้อมูลของทุก Section แบบ Real-time</p>
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+          <div class="qa-hero-year">
+            <i class="bi bi-calendar3"></i>
+            <select id="public-year-select" class="qa-year-sel" style="background:transparent;border:none;color:white;font-weight:700;outline:none;" onchange="renderPublicDashboard()"><option>กำลังโหลด...</option></select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="container py-4">
+    <div id="deadline-banner" class="qa-deadline-banner mb-4" style="display:none;"></div>
+    <div class="qa-stats-grid mb-4" id="public-stats-row">
+      <div class="qa-stat-card"><div class="qa-stat-num">--</div><div class="qa-stat-label">Section ทั้งหมด</div></div>
+      <div class="qa-stat-card success"><div class="qa-stat-num">--</div><div class="qa-stat-label">ส่งแล้ว</div></div>
+      <div class="qa-stat-card warning"><div class="qa-stat-num">--</div><div class="qa-stat-label">รอดำเนินการ</div></div>
+      <div class="qa-stat-card accent"><div class="qa-stat-num">--%</div><div class="qa-stat-label">อัตราการส่ง</div></div>
+      <div class="qa-stat-card info"><div class="qa-stat-num" id="visit-count">--</div><div class="qa-stat-label">ผู้เข้าชมวันนี้</div></div>
+    </div>
+    <div class="qa-glass-card mb-4 p-4">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="fw-700" style="font-size:.84rem;color:var(--txt-2);">ความคืบหน้าภาพรวม</span>
+        <span class="fw-700" id="public-progress-pct">0%</span>
+      </div>
+      <div class="qa-progress-track"><div class="qa-progress-fill" id="public-progress-bar" style="width:0%"></div></div>
+    </div>
+    <ul class="qa-admin-tabs mb-4" id="home-tab-bar" style="border-bottom: 2px solid var(--border);">
+      <li><a class="qa-tab-link active" onclick="homeSelectTab('qa')" id="home-tab-qa-btn"><i class="bi bi-grid-3x3-gap-fill me-2"></i>สถานะแต่ละ Section</a></li>
+      <li><a class="qa-tab-link" onclick="homeSelectTab('iqa')" id="home-tab-iqa-btn"><i class="bi bi-diagram-3-fill me-2"></i>สรุปข้อมูลหน้าจอ IQA เสมือน</a></li>
+    </ul>
+
+    <div id="home-panel-qa" style="display:block;">
+      <div class="qa-section-grid" id="public-section-grid">
+        <div class="text-center py-5 col-12"><div class="qa-spinner"></div><p class="text-muted mt-3">กำลังโหลด...</p></div>
+      </div>
+    </div>
+    
+    <div id="home-panel-iqa" style="display:none;">
+      <div id="iqa-view-content"></div>
+    </div>
+  </div>
+</div>
+
+<div id="view-login" class="view-section">
+  <div class="qa-auth-wrap">
+    <div class="qa-auth-card">
+      <div class="qa-auth-header">
+        <div class="qa-auth-logo"><i class="bi bi-shield-check-fill"></i></div>
+        <h2>เข้าสู่ระบบ QA BUTC</h2>
+        <p>สำหรับบุคลากรวิทยาลัยเทคโนโลยีบูรพาปราจีน</p>
+      </div>
+      <div class="qa-auth-body">
+        <button class="qa-google-btn" id="btnGoogleLogin" onclick="loginWithGoogle()">
+          <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          เข้าสู่ระบบด้วยบัญชี @butc.ac.th
+        </button>
+        <div id="login-error-area"></div>
+        <div class="qa-info-box mt-3">
+          <div class="qa-info-item"><i class="bi bi-person-circle text-primary-c"></i><span><strong>บุคลากร</strong> ใช้อีเมล @butc.ac.th</span></div>
+          <div class="qa-info-item"><i class="bi bi-eye text-success"></i><span><strong>บุคคลทั่วไป</strong> ดู Dashboard ได้โดยไม่ต้องเข้าสู่ระบบ</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="view-register" class="view-section">
+  <div class="container py-5">
+    <div class="row justify-content-center"><div class="col-lg-7">
+      <div class="qa-glass-card p-4">
+        <h5 class="fw-700 mb-4"><i class="bi bi-person-plus-fill text-success me-2"></i>ลงทะเบียนบุคลากรใหม่</h5>
+        <form id="regForm" onsubmit="handleRegistration(event)">
+          <div class="mb-3"><label class="qa-label">อีเมลองค์กร (@butc.ac.th)</label><input type="email" class="qa-input" name="email" id="reg-email" required readonly></div>
+          <div class="row mb-3">
+            <div class="col-3"><label class="qa-label">คำนำหน้า</label><select class="qa-input" name="prefix" required><option>นาย</option><option>นาง</option><option>นางสาว</option><option>ดร.</option></select></div>
+            <div class="col-4"><label class="qa-label">ชื่อ</label><input type="text" class="qa-input" name="fname" required></div>
+            <div class="col-5"><label class="qa-label">นามสกุล</label><input type="text" class="qa-input" name="lname" required></div>
+          </div>
+          <div class="mb-3"><label class="qa-label">เบอร์โทรศัพท์</label><input type="tel" class="qa-input" name="phone"></div>
+          <div class="mb-3"><label class="qa-label">ตำแหน่งงาน</label>
+            <div class="qa-check-grid">
+              <label class="qa-check-item"><input type="checkbox" name="positions" value="ผู้บริหาร" onchange="checkRegPositions()"><span>ผู้บริหาร</span></label>
+              <label class="qa-check-item"><input type="checkbox" name="positions" value="หัวหน้างาน" onchange="checkRegPositions()"><span>หัวหน้างาน</span></label>
+              <label class="qa-check-item"><input type="checkbox" name="positions" value="ครูผู้สอน" onchange="checkRegPositions()"><span>ครูผู้สอน</span></label>
+              <label class="qa-check-item"><input type="checkbox" name="positions" value="เจ้าหน้าที่" onchange="checkRegPositions()"><span>เจ้าหน้าที่</span></label>
+            </div>
+            <div id="reg-mgr-notice" class="qa-alert qa-alert-info mt-3" style="display:none;"></div>
+          </div>
+          <div id="reg-sec-container" class="mb-4">
+              <div id="reg-sections-list"></div>
+          </div>
+          <div id="reg-dept-container" class="mb-4" style="display:none;">
+              <div id="reg-dept-list"></div>
+          </div>
+          <button type="submit" class="qa-btn-primary w-100" id="btnRegister"><i class="bi bi-person-check-fill me-1"></i>สมัครสมาชิก</button>
+        </form>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div id="view-user-dashboard" class="view-section">
+  <div class="container py-4">
+    <div class="qa-glass-card p-4 mb-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+      <div class="d-flex align-items-center gap-3">
+        <div class="qa-avatar-lg"><i class="bi bi-person-fill"></i></div>
+        <div><h5 class="mb-0 fw-700" id="user-fullname-display">ชื่อ-สกุล</h5><p class="mb-0 text-muted small" id="user-position-display">ตำแหน่ง</p></div>
+      </div>
+      <div class="text-end">
+        <div class="text-muted small mb-1">ปีการศึกษา</div>
+        <select id="user-year-select" class="qa-year-sel" onchange="loadUserSections()"></select>
+        <div id="user-deadline-display" class="mt-1"></div>
+      </div>
+    </div>
+    <div id="system-closed-msg" class="qa-alert qa-alert-danger mb-4" style="display:none;"><i class="bi bi-lock-fill fs-4"></i><div><strong>ไม่สามารถกรอกข้อมูลได้</strong><p class="mb-0 small" id="system-closed-reason">ระบบปิดรับข้อมูล</p></div></div>
+    <div id="admin-not-user-msg" class="qa-glass-card p-4 mb-4" style="display:none;">
+      <div class="d-flex align-items-start gap-3">
+        <i class="bi bi-shield-fill-exclamation text-info" style="font-size:2rem;flex-shrink:0;"></i>
+        <div>
+          <div class="fw-700 mb-1" style="color:var(--txt);">Admin — ไม่แสดงฟอร์มกรอกข้อมูลโดยตรง</div>
+          <div class="text-muted small mb-3">เพื่อความปลอดภัย Admin จะไม่เห็นฟอร์มกรอกข้อมูลปกติ หากต้องการกรอกข้อมูลฉุกเฉินแทนผู้ใช้ กรุณากดปุ่มด้านล่าง</div>
+          <button class="qa-btn-primary" onclick="adminActAsUser()">
+            <i class="bi bi-person-fill-gear me-1"></i>Admin Mode: กรอกข้อมูลฉุกเฉิน
+          </button>
+        </div>
+      </div>
+    </div>
+    <div id="user-form-engine" style="display:none;">
+      <div class="qa-form-layout">
+        <div class="qa-form-sidebar">
+          <div class="qa-sidebar-head"><i class="bi bi-layout-sidebar-inset me-2"></i>Section ของคุณ</div>
+          <nav class="qa-sidebar-nav" id="user-section-tabs"></nav>
+        </div>
+        <div class="qa-form-main">
+          <div class="qa-alert qa-alert-info mb-4"><i class="bi bi-info-circle-fill"></i><span>กดปุ่ม "บันทึก" ที่แต่ละฟอร์ม ระบบบันทึกทีละส่วน</span></div>
+          <div id="user-forms-content"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="view-manager-dashboard" class="view-section">
+  <div class="container py-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+      <div>
+        <h4 class="fw-700 mb-1"><i class="bi bi-person-lines-fill text-info me-2"></i>Manager Dashboard</h4>
+        <p class="text-muted mb-0">ติดตามและตรวจสอบ Section ในความดูแล</p>
+      </div>
+      <div class="d-flex gap-2 align-items-center">
+        <button id="mgr-edit-data-btn" class="qa-btn-primary" style="display:none; font-size:0.9rem;" onclick="goToUserForm()">
+          <i class="bi bi-pencil-square me-1"></i>ไปหน้ากรอกข้อมูล
+        </button>
+        <select id="mgr-year-select" class="qa-year-sel" onchange="renderManagerDashboard()"></select>
+      </div>
+    </div>
+    
+    <div class="qa-stats-grid mb-4" id="mgr-stats-row"></div>
+    <div class="qa-glass-card p-4">
+      <h6 class="fw-700 mb-4"><i class="bi bi-bar-chart-fill me-2"></i>Section ในความดูแล</h6>
+      <div class="qa-section-grid" id="mgr-section-grid"></div>
+    </div>
+  </div>
+</div>
+
+<div id="view-admin-dashboard" class="view-section">
+  <div class="container-fluid py-4 px-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+      <div><h4 class="fw-700 mb-1"><i class="bi bi-gear-wide-connected text-danger me-2"></i>Admin Control Panel</h4><p class="text-muted mb-0" id="admin-email-display"></p></div>
+      <select id="admin-year-select" class="qa-year-sel" onchange="renderAdminDashboard()"></select>
+    </div>
+    <ul class="qa-admin-tabs mb-4" id="admin-tab-bar">
+      <li><a class="qa-tab-link active" onclick="switchAdminTab('tab-overview')" data-tab="tab-overview"><i class="bi bi-graph-up-arrow me-1"></i>ภาพรวม</a></li>
+      <li><a class="qa-tab-link" onclick="switchAdminTab('tab-sections')" data-tab="tab-sections"><i class="bi bi-folder-plus me-1"></i>Section</a></li>
+      <li><a class="qa-tab-link" onclick="switchAdminTab('tab-forms')" data-tab="tab-forms"><i class="bi bi-ui-checks-grid me-1"></i>Form Builder</a></li>
+      <li><a class="qa-tab-link" onclick="switchAdminTab('tab-users')" data-tab="tab-users"><i class="bi bi-people-fill me-1"></i>จัดการผู้ใช้</a></li>
+      <li><a class="qa-tab-link" onclick="switchAdminTab('tab-settings')" data-tab="tab-settings"><i class="bi bi-sliders2 me-1"></i>ตั้งค่าระบบ</a></li>
+      <li><a class="qa-tab-link" onclick="switchAdminTab('tab-data')" data-tab="tab-data"><i class="bi bi-database-fill me-1"></i>ข้อมูล & Export</a></li>
+      <li><a class="qa-tab-link" onclick="switchAdminTab('tab-stats')" data-tab="tab-stats"><i class="bi bi-bar-chart-fill me-1"></i>สถิติผู้ใช้</a></li>
+      <li><a class="qa-tab-link" onclick="switchAdminTab('tab-theme')" data-tab="tab-theme"><i class="bi bi-palette-fill me-1"></i>ธีม</a></li>
+      <li><a class="qa-tab-link" onclick="switchAdminTab('tab-iqa')" data-tab="tab-iqa"><i class="bi bi-diagram-3-fill me-1"></i>IQA Mapping</a></li>
+    </ul>
+
+    <div id="tab-overview" class="qa-tab-content active">
+      <div class="qa-stats-grid mb-4" id="admin-stats-row"></div>
+      <div class="row">
+        <div class="col-lg-8 mb-4"><div class="qa-glass-card p-4"><h6 class="fw-700 mb-4"><i class="bi bi-grid-fill me-2"></i>สถานะ Section</h6><div class="qa-section-grid" id="admin-section-grid"></div></div></div>
+        <div class="col-lg-4 mb-4"><div class="qa-glass-card p-4"><h6 class="fw-700 mb-3"><i class="bi bi-pie-chart-fill me-2"></i>อัตราการส่ง</h6><canvas id="admin-pie-chart" height="220"></canvas></div></div>
+      </div>
+      <div class="qa-glass-card p-4 mb-4"><h6 class="fw-700 mb-3"><i class="bi bi-graph-up me-2"></i>แนวโน้มรายเดือน</h6><canvas id="admin-bar-chart" height="90"></canvas></div>
+    </div>
+
+    <div id="tab-sections" class="qa-tab-content">
+      <ul class="nav nav-pills mb-4" id="pills-tab" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active fw-700" id="pill-dept-tab" data-bs-toggle="pill" data-bs-target="#pill-dept" type="button" role="tab"><i class="bi bi-building-fill me-2"></i>จัดการ Department (ฝ่าย)</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link fw-700" id="pill-sec-tab" data-bs-toggle="pill" data-bs-target="#pill-sec" type="button" role="tab"><i class="bi bi-folder-fill me-2"></i>จัดการ Section (งานย่อย)</button>
+        </li>
+      </ul>
+
+      <div class="tab-content" id="pills-tabContent">
+        <div class="tab-pane fade show active" id="pill-dept" role="tabpanel">
+          <div class="row">
+            <div class="col-lg-5 mb-4">
+              <div class="qa-glass-card p-4">
+                <h6 class="fw-700 mb-4"><i class="bi bi-building-add text-primary-c me-2"></i>สร้าง / แก้ไข Department</h6>
+                <form id="dept-form" onsubmit="handleSaveDepartment(event)">
+                  <input type="hidden" id="dept-id-hidden">
+                  <input type="hidden" id="dept-icon-hidden" value="bi-building">
+                  <input type="hidden" id="dept-color-hidden" value="indigo">
+                  <div class="mb-3"><label class="qa-label">ชื่อ Department (ฝ่าย) *</label><input type="text" class="qa-input" id="dept-name" required placeholder="เช่น ฝ่ายบริหารทรัพยากร"></div>
+                  <div class="mb-3"><label class="qa-label">คำอธิบาย</label><textarea class="qa-input" id="dept-desc" rows="2"></textarea></div>
+                  <div class="mb-3"><label class="qa-label">ไอคอน</label><div class="d-flex gap-2 align-items-center"><div id="dept-icon-preview" class="qa-picker-preview"><i class="bi bi-building me-2"></i>bi-building</div><button type="button" class="qa-btn-ghost" onclick="openIconPicker('dept')"><i class="bi bi-grid-3x3-gap-fill me-1"></i>เลือก</button></div></div>
+                  <div class="mb-4">
+                    <label class="qa-label">สีธีม</label>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                      <div id="dept-color-preview" class="qa-picker-preview"><span class="qa-color-dot" style="background:#4338ca;"></span>Indigo</div>
+                      <button type="button" class="qa-btn-ghost" onclick="openColorPicker('dept')"><i class="bi bi-palette-fill me-1"></i>เลือกสแตนดาร์ด</button>
+                      <div class="d-flex align-items-center gap-2 border rounded px-2" style="background:var(--glass-bg); border-color:var(--border)!important;">
+                        <input type="color" id="dept-custom-color" class="form-control form-control-color p-0 border-0" style="width:30px;height:30px;background:none;cursor:pointer;" onchange="applyCustomColor('dept', this.value)">
+                        <span style="font-size:0.8rem;color:var(--txt-muted);">กำหนดสีเอง</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="mb-4">
+                    <div id="dept-sections-checkboxes"></div>
+                  </div>
+                  
+                  <div class="d-flex gap-2"><button type="submit" class="qa-btn-primary flex-fill" id="btn-save-dept"><i class="bi bi-save-fill me-1"></i>บันทึก</button><button type="button" class="qa-btn-ghost" onclick="clearDeptForm()"><i class="bi bi-x"></i></button></div>
+                </form>
+              </div>
+            </div>
+            <div class="col-lg-7 mb-4"><div class="qa-glass-card p-4"><h6 class="fw-700 mb-4"><i class="bi bi-list-ul me-2"></i>Department ทั้งหมด</h6><div id="dept-list-table"></div></div></div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="pill-sec" role="tabpanel">
+          <div class="row">
+            <div class="col-lg-5 mb-4">
+              <div class="qa-glass-card p-4">
+                <h6 class="fw-700 mb-4"><i class="bi bi-folder-plus text-primary-c me-2"></i>สร้าง / แก้ไข Section</h6>
+                <form id="section-form" onsubmit="handleSaveSection(event)">
+                  <input type="hidden" id="section-id-hidden">
+                  <input type="hidden" id="section-icon-hidden" value="bi-folder">
+                  <input type="hidden" id="section-color-hidden" value="blue">
+                  <div class="mb-3"><label class="qa-label">ชื่อ Section (งานย่อย) *</label><input type="text" class="qa-input" id="section-name" required placeholder="เช่น งานบุคลากร"></div>
+                  <div class="mb-3"><label class="qa-label">คำอธิบาย</label><textarea class="qa-input" id="section-desc" rows="2"></textarea></div>
+                  <div class="mb-3"><label class="qa-label">ไอคอน</label><div class="d-flex gap-2 align-items-center"><div id="section-icon-preview" class="qa-picker-preview"><i class="bi bi-folder me-2"></i>bi-folder</div><button type="button" class="qa-btn-ghost" onclick="openIconPicker('section')"><i class="bi bi-grid-3x3-gap-fill me-1"></i>เลือก</button></div></div>
+                  <div class="mb-4">
+                    <label class="qa-label">สีธีม</label>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                      <div id="section-color-preview" class="qa-picker-preview"><span class="qa-color-dot" style="background:#2563eb;"></span>Blue</div>
+                      <button type="button" class="qa-btn-ghost" onclick="openColorPicker('section')"><i class="bi bi-palette-fill me-1"></i>เลือกสแตนดาร์ด</button>
+                      <div class="d-flex align-items-center gap-2 border rounded px-2" style="background:var(--glass-bg); border-color:var(--border)!important;">
+                        <input type="color" id="section-custom-color" class="form-control form-control-color p-0 border-0" style="width:30px;height:30px;background:none;cursor:pointer;" onchange="applyCustomColor('section', this.value)">
+                        <span style="font-size:0.8rem;color:var(--txt-muted);">กำหนดสีเอง</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mb-4"><div id="section-form-checkboxes"></div></div>
+                  <div class="d-flex gap-2"><button type="submit" class="qa-btn-primary flex-fill" id="btn-save-section"><i class="bi bi-save-fill me-1"></i>บันทึก</button><button type="button" class="qa-btn-ghost" onclick="clearSectionForm()"><i class="bi bi-x"></i></button></div>
+                </form>
+              </div>
+            </div>
+            <div class="col-lg-7 mb-4"><div class="qa-glass-card p-4"><h6 class="fw-700 mb-4"><i class="bi bi-list-ul me-2"></i>Section ทั้งหมด</h6><div id="section-list-table"></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-forms" class="qa-tab-content">
+      <div class="row">
+        <div class="col-lg-6 mb-4">
+          <div class="qa-glass-card p-4">
+            <h6 class="fw-700 mb-4"><i class="bi bi-ui-checks-grid text-primary-c me-2"></i>สร้าง / แก้ไข Form</h6>
+            <form id="form-builder-form" onsubmit="handleSaveForm(event)">
+              <input type="hidden" id="form-id-hidden">
+              <div class="mb-3">
+                <label class="qa-label">ชื่อ Form *</label>
+                <input type="text" class="qa-input" id="form-name" required placeholder="เช่น ข้อมูลบุคลากร">
+              </div>
+              <div class="mb-3">
+                <label class="qa-label">คำอธิบาย Form</label>
+                <input type="text" class="qa-input" id="form-desc" placeholder="อธิบายสั้นๆ เกี่ยวกับ Form นี้">
+              </div>
+              <div class="mb-4">
+                <label class="qa-label">หมายเหตุ / คำเตือน</label>
+                <textarea class="qa-input" id="form-note" rows="2" placeholder="ข้อควรระวังสำหรับผู้กรอก"></textarea>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <label class="qa-label mb-0">ฟิลด์ในฟอร์ม</label>
+                <button type="button" class="qa-btn-add-field" onclick="fbAddField()">
+                  <i class="bi bi-plus-circle-fill me-1"></i>เพิ่มฟิลด์
+                </button>
+              </div>
+              <div id="fb-field-list">
+                <div class="fb-empty">
+                  <i class="bi bi-columns-gap"></i>
+                  <p>กด "เพิ่มฟิลด์" เพื่อเริ่มสร้างฟอร์ม</p>
+                </div>
+              </div>
+              <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="qa-btn-primary flex-fill" id="btn-save-form">
+                  <i class="bi bi-save-fill me-1"></i>บันทึก Form
+                </button>
+                <button type="button" class="qa-btn-ghost" onclick="clearFormBuilder()">
+                  <i class="bi bi-x"></i>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div class="col-lg-6 mb-4">
+          <div class="qa-glass-card p-4 mb-4" style="position:sticky;top:80px;">
+            <h6 class="fw-700 mb-3"><i class="bi bi-eye-fill text-success me-2"></i>ตัวอย่าง Form (Real-time)</h6>
+            <div id="fb-preview-area" style="background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r-sm);padding:16px;min-height:120px;max-height:400px;overflow-y:auto;">
+              <div style="text-align:center;padding:32px;color:var(--txt-muted);">
+                <i class="bi bi-layout-text-window" style="font-size:2rem;display:block;margin-bottom:8px;"></i>
+                ตัวอย่างจะแสดงที่นี่
+              </div>
+            </div>
+          </div>
+          <div class="qa-glass-card p-4">
+            <h6 class="fw-700 mb-3"><i class="bi bi-list-ul me-2"></i>Form ทั้งหมด</h6>
+            <div id="form-list-table"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-users" class="qa-tab-content">
+      <div class="row">
+        <div class="col-lg-5 mb-4">
+          <div class="qa-glass-card p-4">
+            <h6 class="fw-700 mb-4"><i class="bi bi-person-badge-fill text-primary-c me-2"></i>เพิ่ม / แก้ไข บุคลากร</h6>
+            <form id="personnel-form" onsubmit="handleSavePersonnel(event)">
+              <div class="mb-3"><label class="qa-label">อีเมล (@butc.ac.th) *</label><input type="email" class="qa-input" id="mgr-email" required></div>
+              <div class="row mb-3">
+                <div class="col-3"><label class="qa-label">คำนำหน้า</label><select class="qa-input" id="mgr-prefix"><option>นาย</option><option>นาง</option><option>นางสาว</option><option>ดร.</option></select></div>
+                <div class="col-4"><label class="qa-label">ชื่อ</label><input type="text" class="qa-input" id="mgr-fname" required></div>
+                <div class="col-5"><label class="qa-label">นามสกุล</label><input type="text" class="qa-input" id="mgr-lname" required></div>
+              </div>
+              <div class="mb-3"><label class="qa-label">โทรศัพท์</label><input type="tel" class="qa-input" id="mgr-phone"></div>
+              
+              <div class="mb-3">
+                <label class="qa-label">ตำแหน่งงาน</label>
+                <div class="qa-check-grid">
+                  <label class="qa-check-item"><input type="checkbox" name="admin_positions" value="ผู้บริหาร" onchange="toggleAdminPermission()"><span>ผู้บริหาร</span></label>
+                  <label class="qa-check-item"><input type="checkbox" name="admin_positions" value="หัวหน้างาน" onchange="toggleAdminPermission()"><span>หัวหน้างาน</span></label>
+                  <label class="qa-check-item"><input type="checkbox" name="admin_positions" value="ครูผู้สอน" onchange="toggleAdminPermission()"><span>ครูผู้สอน</span></label>
+                  <label class="qa-check-item"><input type="checkbox" name="admin_positions" value="เจ้าหน้าที่" onchange="toggleAdminPermission()"><span>เจ้าหน้าที่</span></label>
+                </div>
+              </div>
+
+              <div class="mb-3" id="admin-perm-container" style="display:none;">
+                <label class="qa-label">สิทธิ์การจัดการข้อมูล (สำหรับผู้บริหาร)</label>
+                <select class="qa-input" id="mgr-permission">
+                  <option value="view">👁️ ดูข้อมูลและติดตามสถานะได้อย่างเดียว (Read-only)</option>
+                  <option value="edit">✏️ ดูและแก้ไข/กรอกข้อมูลของฝ่ายตนเองได้ (View & Edit)</option>
+                </select>
+              </div>
+
+              <div id="mgr-sec-container" class="mb-4">
+                <div id="mgr-sections-checkboxes"></div>
+              </div>
+              <div id="mgr-dept-container" class="mb-4" style="display:none;">
+                <div id="mgr-dept-checkboxes"></div>
+              </div>
+              <button type="submit" class="qa-btn-primary w-100"><i class="bi bi-person-plus-fill me-1"></i>บันทึกข้อมูลบุคลากร</button>
+            </form>
+          </div>
+        </div>
+        <div class="col-lg-7 mb-4"><div class="qa-glass-card p-4"><div class="d-flex justify-content-between align-items-center mb-3"><h6 class="fw-700 mb-0"><i class="bi bi-people-fill me-2"></i>รายชื่อผู้ใช้ทั้งหมด</h6><button class="qa-btn-ghost btn-sm" onclick="loadAllUsers()"><i class="bi bi-arrow-clockwise me-1"></i>รีเฟรช</button></div><div id="users-table-area"></div></div></div>
+      </div>
+    </div>
+
+    <div id="tab-settings" class="qa-tab-content">
+      <div class="row">
+        <div class="col-lg-6 mb-4">
+          <div class="qa-glass-card p-4">
+            <h6 class="fw-700 mb-4"><i class="bi bi-calendar-range-fill text-danger me-2"></i>ตั้งค่าปีการศึกษา</h6>
+            <form id="adminSettingsForm" onsubmit="handleAdminSettings(event)">
+              <div class="mb-3"><label class="qa-label">ปีการศึกษา (พ.ศ.) *</label><input type="number" class="qa-input fw-700" id="admin-year" required placeholder="เช่น 2568"></div>
+              <div class="row mb-3">
+                <div class="col-6"><label class="qa-label">เปิดรับข้อมูล</label><input type="date" class="qa-input" id="admin-start" required onchange="updateDatePreview()"><small class="text-success fw-700" id="start-th-preview"></small></div>
+                <div class="col-6"><label class="qa-label">ปิดรับข้อมูล</label><input type="date" class="qa-input" id="admin-end" required onchange="updateDatePreview()"><small class="text-danger fw-700" id="end-th-preview"></small></div>
+              </div>
+              <div class="mb-4"><label class="qa-label">สถานะระบบ</label><select class="qa-input" id="admin-status"><option value="Open">✅ เปิดรับข้อมูล</option><option value="Closed">🔒 ปิดระบบ</option></select></div>
+              <div class="mb-4"><div id="settings-sections-checkboxes"></div></div>
+              <button type="submit" class="qa-btn-primary w-100" id="btnAdminSave"><i class="bi bi-save-fill me-1"></i>บันทึกการตั้งค่า</button>
+            </form>
+          </div>
+        </div>
+        <div class="col-lg-6 mb-4">
+          <div class="qa-glass-card p-4 mb-4"><h6 class="fw-700 mb-4"><i class="bi bi-table me-2"></i>รายการปีที่สร้างไว้</h6><div id="settings-year-list"></div></div>
+          <div class="qa-glass-card p-4"><button class="qa-btn-warning w-100" onclick="adminActAsUser()"><i class="bi bi-pencil-square me-1"></i>Admin Mode: กรอกข้อมูลฉุกเฉิน</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-data" class="qa-tab-content">
+      <div class="row">
+        <div class="col-lg-6 mb-4">
+          <div class="qa-glass-card p-4">
+            <h6 class="fw-700 mb-4"><i class="bi bi-file-earmark-excel-fill text-success me-2"></i>Export ข้อมูลเป็นไฟล์ใหม่</h6>
+            <div class="text-center py-3">
+              <div style="font-size:3rem;color:var(--success);margin-bottom:12px;"><i class="bi bi-cloud-download-fill"></i></div>
+              <p class="text-muted small">สร้างไฟล์ Google Sheets ใหม่แยกต่างหาก</p>
+              <select class="qa-input mb-3" id="export-year-select"><option value="">-- เลือกปีการศึกษา --</option></select>
+              <button class="qa-btn-success w-100" onclick="handleExport()"><i class="bi bi-download me-1"></i>Export ข้อมูล</button>
+              <div id="export-result" class="mt-3"></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6 mb-4">
+          <div class="qa-glass-card p-4"><h6 class="fw-700 mb-3"><i class="bi bi-shield-lock-fill text-danger me-2"></i>ล้างข้อมูล (Admin Mode)</h6><div class="qa-alert qa-alert-warning"><i class="bi bi-info-circle-fill"></i><span>ใช้ปุ่ม "ล้างข้อมูลส่วนนี้" ที่หน้ากรอกข้อมูล (Admin Mode)</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-stats" class="qa-tab-content">
+      <div class="row">
+        <div class="col-12 mb-4">
+          <div class="qa-glass-card p-4">
+            <h6 class="fw-700 mb-4"><i class="bi bi-bar-chart-line-fill me-2"></i>สถิติผู้เข้าชมและผู้ใช้งาน</h6>
+            <div class="qa-stats-grid mb-4" id="visit-stats-row">
+              <div class="qa-stat-card info"><div class="qa-stat-num" id="stat-total-visits">--</div><div class="qa-stat-label">ผู้เข้าชมทั้งหมด</div></div>
+              <div class="qa-stat-card"><div class="qa-stat-num" id="stat-unique-users">--</div><div class="qa-stat-label">ผู้ใช้ที่ Login</div></div>
+              <div class="qa-stat-card success"><div class="qa-stat-num" id="stat-today">--</div><div class="qa-stat-label">วันนี้</div></div>
+              <div class="qa-stat-card warning"><div class="qa-stat-num" id="stat-sections">--</div><div class="qa-stat-label">Section ที่ส่งข้อมูล</div></div>
+            </div>
+            <div class="qa-alert qa-alert-info"><i class="bi bi-info-circle-fill"></i><span>สถิติจะสะสมตามจำนวนการเข้าใช้งานจริง (บันทึกทุกครั้งที่โหลดหน้า + Login)</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-theme" class="qa-tab-content">
+      <div class="row">
+        <div class="col-lg-7 mb-4">
+          <div class="qa-glass-card p-4">
+            <h6 class="fw-700 mb-4"><i class="bi bi-palette-fill me-2"></i>ตั้งค่าสีและธีม (Theme & Colors)</h6>
+            
+            <div class="mb-4">
+              <label class="qa-label text-primary">1. ธีมสำเร็จรูป (Theme Presets)</label>
+              <div class="qa-preset-grid" id="theme-preset-grid" style="margin-bottom: 12px;"></div>
+            </div>
+
+            <hr style="border-top: 1px dashed var(--border); margin: 20px 0;">
+
+            <div class="mb-4">
+              <label class="qa-label">2. ปรับแต่งสีหลัก (Primary Color)</label>
+              <div class="qa-color-swatches" id="primary-swatches"></div>
+              <div class="qa-primary-custom-wrap mt-2">
+                <input type="color" id="custom-primary-picker" value="#2563eb" onchange="selectCustomPrimaryColor(this.value)">
+                <span style="font-size:0.8rem; color:var(--txt-muted); font-weight:600;">กำหนดสีหลักเอง (Custom)</span>
+              </div>
+            </div>
+            
+            <div class="mb-4">
+              <label class="qa-label">3. ปรับแต่งสีพื้นหลังส่วนหัว (Hero Gradient)</label>
+              <div class="qa-gradient-grid" id="gradient-presets"></div>
+              
+              <div id="grad-builder-section" class="qa-grad-builder" style="display:none; margin-top:14px;">
+                <div class="qa-grad-builder-title"><i class="bi bi-sliders"></i> สร้าง Gradient เอง</div>
+                <div id="grad-builder-preview" class="qa-grad-preview"></div>
+                <div class="qa-grad-type-btns">
+                  <button type="button" class="qa-grad-type-btn" data-grad-type="linear" onclick="setGradType('linear')">Linear</button>
+                  <button type="button" class="qa-grad-type-btn" data-grad-type="radial" onclick="setGradType('radial')">Radial</button>
+                </div>
+                <div class="qa-grad-direction" id="grad-dir-btns"></div>
+                <div class="qa-grad-stops" id="grad-stops-list"></div>
+                <button type="button" class="qa-btn-ghost btn-sm w-100 mb-2" onclick="addGradStop()"><i class="bi bi-plus"></i> เพิ่มจุดสี</button>
+                <button type="button" class="qa-btn-success btn-sm w-100" onclick="applyCustomGradient()"><i class="bi bi-check2-circle"></i> นำ Gradient ไปใช้</button>
+              </div>
+            </div>
+
+            <div class="mb-4">
+              <label class="qa-label">ตัวอย่างการแสดงผล</label>
+              <div id="theme-preview-box" class="qa-theme-preview-box"></div>
+            </div>
+            <button class="qa-btn-primary w-100" onclick="saveTheme()"><i class="bi bi-save-fill me-1"></i>บันทึกธีม</button>
+          </div>
+        </div>
+        
+        <div class="col-lg-5 mb-4">
+          <div class="qa-glass-card p-4 mb-4">
+            <h6 class="fw-700 mb-4"><i class="bi bi-image-fill text-info me-2"></i>ตราสัญลักษณ์และชื่อสถานศึกษา</h6>
+            <div class="mb-3">
+                <label class="qa-label">ชื่อสถานศึกษา (แสดงใต้โลโก้)</label>
+                <div class="d-flex gap-2">
+                    <input type="text" id="input-college-name" class="qa-input" placeholder="เช่น วิทยาลัยเทคนิคบูรพาปราจีน" oninput="previewCollegeName(this.value)">
+                    <button type="button" class="qa-btn-primary" onclick="saveCollegeName()" style="flex-shrink:0;">
+                        <i class="bi bi-save-fill me-1"></i>บันทึก
+                    </button>
+                </div>
+            </div>
+            <div class="qa-logo-upload-zone" onclick="document.getElementById('logo-file-input').click();">
+              <i class="bi bi-cloud-upload-fill" style="font-size:2.4rem; color:var(--primary);"></i>
+              <div style="font-size:0.85rem; font-weight:700; margin-top:8px; color:var(--txt);">คลิกเพื่ออัปโหลดตราสัญลักษณ์</div>
+              <div style="font-size:0.75rem; color:var(--txt-muted);">รองรับ PNG, JPG, WEBP (ขนาดไม่เกิน 2MB)</div>
+              <input type="file" id="logo-file-input" accept="image/*" style="display:none;" onchange="handleLogoFileSelect(this)">
+            </div>
+            <div id="logo-upload-status" class="mt-2 text-center text-primary" style="font-size:0.8rem;"></div>
+            <div id="logo-preview-area"></div>
+          </div>
+
+          <div class="qa-glass-card p-4">
+            <h6 class="fw-700 mb-4"><i class="bi bi-sun-fill text-warning me-2"></i>โหมดแสดงผลเริ่มต้น</h6>
+            <div class="qa-theme-mode-btns">
+              <button class="qa-mode-btn active" onclick="setTheme('light')" id="btn-light-mode"><i class="bi bi-sun-fill d-block fs-2 mb-2"></i>Light Mode<br><small class="text-muted" style="font-size:.7rem;">สว่าง (ค่าเริ่มต้น)</small></button>
+              <button class="qa-mode-btn" onclick="setTheme('dark')" id="btn-dark-mode"><i class="bi bi-moon-stars-fill d-block fs-2 mb-2"></i>Dark Mode<br><small class="text-muted" style="font-size:.7rem;">มืด</small></button>
+            </div>
+            <div class="qa-alert qa-alert-info mt-4"><i class="bi bi-info-circle-fill"></i><span>ผู้ใช้ทุกคนปรับโหมดได้เองจากปุ่มรูปพระอาทิตย์ที่ Navbar</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-iqa" class="qa-tab-content">
+      <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <div>
+          <h6 class="fw-700 mb-1"><i class="bi bi-diagram-3-fill text-info me-2"></i>IQA Mapping — เชื่อมฟอร์มกับหัวข้อ iqa.ovec.go.th</h6>
+          <p class="text-muted small mb-0">เลือกฟอร์มที่สร้างไว้ เพื่อ Map กับหัวข้อในระบบ IQA Online</p>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="qa-btn-ghost btn-sm" id="iqa-phase1-btn" onclick="iqaSelectPhase('Phase1')">
+            <i class="bi bi-1-circle-fill me-1"></i>Phase 1 ข้อมูลพื้นฐาน
+          </button>
+          <button class="qa-btn-ghost btn-sm" id="iqa-phase2-btn" onclick="iqaSelectPhase('Phase2')">
+            <i class="bi bi-2-circle-fill me-1"></i>Phase 2 ประกันคุณภาพ
+          </button>
+          <button class="qa-btn-primary btn-sm" onclick="iqaSaveAllMappings()">
+            <i class="bi bi-save-fill me-1"></i>บันทึก Mapping
+          </button>
+        </div>
+      </div>
+      <div class="qa-alert qa-alert-info mb-4">
+        <i class="bi bi-info-circle-fill"></i>
+        <span>เลือก <strong>Form</strong> ที่สร้างไว้ในระบบ เพื่อ Map กับแต่ละหัวข้อใน iqa.ovec.go.th — ระบบจะแสดงสถานะข้อมูลของ Form นั้นในหน้า IQA มุมมองสาธารณะ</span>
+      </div>
+      <div id="iqa-page-list"></div>
+    </div>
+
+  </div></div><div id="view-verify-manager" class="view-section">
+  <div class="container py-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+      <div>
+        <h4 class="fw-700 mb-1"><i class="bi bi-person-video2 text-info me-2"></i>ตรวจสอบ Manager Dashboard</h4>
+        <p class="text-muted mb-0">ดูหน้าจอเสมือนจริงของ Manager แต่ละคน หรือเลือกดูตาม Department</p>
+      </div>
+      <div class="d-flex gap-2 align-items-center flex-wrap">
+        <select id="verify-dept-select" class="qa-input py-2" style="min-width:200px;" onchange="document.getElementById('verify-mgr-select').value=''; renderVerifyDashboard()"><option value="">-- เลือกฝ่าย (Department) --</option></select>
+        <span class="text-muted fw-700">หรือ</span>
+        <select id="verify-mgr-select" class="qa-input py-2" style="min-width:200px;" onchange="document.getElementById('verify-dept-select').value=''; renderVerifyDashboard()"><option value="">-- เลือก Manager --</option></select>
+        <select id="verify-year-select" class="qa-year-sel" onchange="renderVerifyDashboard()"></select>
+      </div>
+    </div>
+    
+    <div class="qa-stats-grid mb-4" id="verify-stats-row"></div>
+    <div class="qa-glass-card p-4">
+      <h6 class="fw-700 mb-4" id="verify-grid-title"><i class="bi bi-bar-chart-fill me-2"></i>Section เป้าหมาย</h6>
+      <div class="qa-section-grid" id="verify-section-grid"></div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<footer class="qa-footer">
+  <div class="container">
+    <div class="qa-footer-inner">
+      <div><div class="qa-footer-brand"><i class="bi bi-shield-check-fill"></i> QA<span>BUTC</span> System v3.0</div><p class="qa-footer-sub">ระบบฐานข้อมูลงานประกันคุณภาพการศึกษา<br>วิทยาลัยเทคนิคบูรพาปราจีน</p></div>
+      <div class="text-end"><p class="qa-footer-copy">Copyright &copy; 2025 <strong>Assawin Namsert</strong><br><span style="font-size:.74rem;">All Rights Reserved.</span></p></div>
+    </div>
+    <div class="qa-footer-bottom">QA BUTC System v3.0 &nbsp;·&nbsp; Copyright &copy; 2025 Assawin Namsert. All Rights Reserved.</div>
+  </div>
+</footer>
+
+<div class="modal fade" id="modal-view-data" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content qa-modal"><div class="qa-modal-head"><h6 id="modal-view-title"><i class="bi bi-folder-open-fill me-2"></i>ข้อมูล Section</h6><button class="qa-modal-close" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button></div><div class="modal-body p-4"><div class="qa-submitter-banner mb-4" id="modal-submitter-info"></div><div id="modal-view-body"></div></div></div></div></div>
+<div class="modal fade" id="modal-unregistered" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content qa-modal"><div class="modal-body text-center p-5"><div class="qa-modal-icon warning mx-auto mb-3"><i class="bi bi-person-exclamation"></i></div><h5>ยังไม่ได้ลงทะเบียน</h5><p class="text-muted">อีเมล <strong id="unreg-email-display" class="text-primary-c"></strong><br>ยังไม่มีโปรไฟล์ในระบบ</p><button class="qa-btn-primary w-100 mt-3" onclick="proceedToRegister()"><i class="bi bi-person-lines-fill me-1"></i>สมัครสมาชิก</button></div></div></div></div>
+<div class="modal fade" id="modal-wrong-domain" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content qa-modal"><div class="modal-body text-center p-5"><div class="qa-modal-icon danger mx-auto mb-3"><i class="bi bi-envelope-x-fill"></i></div><h5>ใช้อีเมลผิดโดเมน</h5><p class="text-muted">บัญชีปัจจุบัน: <strong id="wrong-email-display" class="text-danger"></strong><br>อนุญาตเฉพาะ <strong>@butc.ac.th</strong></p><div class="d-flex gap-2 mt-4 justify-content-center"><button class="qa-btn-ghost" data-bs-dismiss="modal">ปิด</button><a id="btn-switch-account" href="#" class="qa-btn-danger"><i class="bi bi-arrow-left-right me-1"></i>สลับบัญชี</a></div></div></div></div></div>
+<div class="modal fade" id="modal-clear-data" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content qa-modal"><div class="modal-body p-4"><h6 class="text-danger mb-3"><i class="bi bi-exclamation-triangle-fill me-1"></i>ยืนยันการล้างข้อมูล</h6><div class="qa-alert qa-alert-danger mb-3"><i class="bi bi-info-circle-fill"></i><span>ล้างข้อมูล <strong id="clear-section-display"></strong> ปี <strong id="clear-year-display"></strong></span></div><input type="hidden" id="clear-target-year"><input type="hidden" id="clear-target-sectionId"><input type="hidden" id="clear-target-fields"><div class="mb-4"><label class="qa-label">รหัสผ่าน Admin</label><input type="password" class="qa-input" id="clear-admin-password"></div><div class="d-flex gap-2"><button class="qa-btn-ghost flex-fill" data-bs-dismiss="modal">ยกเลิก</button><button class="qa-btn-danger flex-fill" id="btnClearData" onclick="confirmClearData()"><i class="bi bi-trash-fill me-1"></i>ยืนยัน</button></div></div></div></div></div>
+<div class="modal fade" id="modal-delete-confirm" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content qa-modal"><div class="modal-body p-4"><div class="text-center mb-3"><div class="qa-modal-icon danger mx-auto"><i class="bi bi-trash-fill"></i></div></div><h5 class="text-center text-danger mb-1">ยืนยันการลบ</h5><p class="text-center fw-700 mb-1" id="del-target-name"></p><p class="text-center text-muted small mb-4" id="del-target-id"></p><div class="qa-alert qa-alert-danger mb-3"><i class="bi bi-exclamation-triangle-fill"></i><span>การลบไม่สามารถกู้คืนได้ — พิมพ์อีเมล Admin เพื่อยืนยัน</span></div><div class="mb-4"><label class="qa-label">พิมพ์อีเมล Admin ของคุณ</label><input type="email" class="qa-input" id="del-confirm-email" autocomplete="off"><small class="text-danger fw-700" id="del-email-error" style="display:none;">อีเมลไม่ตรงกัน</small></div><div class="d-flex gap-2"><button class="qa-btn-ghost flex-fill" data-bs-dismiss="modal" onclick="APP.pendingDelete=null">ยกเลิก</button><button class="qa-btn-danger flex-fill" id="btn-confirm-delete" onclick="executeDelete()"><i class="bi bi-trash-fill me-1"></i>ยืนยันลบ</button></div></div></div></div></div>
+
+<div class="modal fade" id="modal-edit-user-sections" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content qa-modal">
+      <div class="qa-modal-head">
+        <h6><i class="bi bi-pencil-square me-2"></i>แก้ไขข้อมูลบุคลากร</h6>
+        <button class="qa-modal-close" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="modal-body p-4">
+        <p class="text-muted mb-3">แก้ไขบัญชี: <strong id="edit-user-email-display" class="text-primary-c"></strong></p>
+        <input type="hidden" id="edit-user-email-hidden">
+        
+        <div class="row mb-3">
+          <div class="col-3"><label class="qa-label">คำนำหน้า</label><select class="qa-input" id="edit-user-prefix"><option>นาย</option><option>นาง</option><option>นางสาว</option><option>ดร.</option></select></div>
+          <div class="col-4"><label class="qa-label">ชื่อ</label><input type="text" class="qa-input" id="edit-user-fname"></div>
+          <div class="col-5"><label class="qa-label">นามสกุล</label><input type="text" class="qa-input" id="edit-user-lname"></div>
+        </div>
+        <div class="mb-3"><label class="qa-label">โทรศัพท์</label><input type="tel" class="qa-input" id="edit-user-phone"></div>
+        
+        <div class="mb-3"><label class="qa-label">ตำแหน่งงาน</label>
+          <div class="qa-check-grid">
+            <label class="qa-check-item"><input type="checkbox" name="edit_positions" value="ผู้บริหาร" onchange="toggleEditModalPermission()"><span>ผู้บริหาร</span></label>
+            <label class="qa-check-item"><input type="checkbox" name="edit_positions" value="หัวหน้างาน" onchange="toggleEditModalPermission()"><span>หัวหน้างาน</span></label>
+            <label class="qa-check-item"><input type="checkbox" name="edit_positions" value="ครูผู้สอน" onchange="toggleEditModalPermission()"><span>ครูผู้สอน</span></label>
+            <label class="qa-check-item"><input type="checkbox" name="edit_positions" value="เจ้าหน้าที่" onchange="toggleEditModalPermission()"><span>เจ้าหน้าที่</span></label>
+          </div>
+        </div>
+
+        <div id="edit-user-perm-container" class="mb-3" style="display:none;">
+          <label class="qa-label">สิทธิ์การจัดการข้อมูล (สำหรับผู้บริหาร)</label>
+          <select class="qa-input" id="edit-user-permission">
+            <option value="view">👁️ ดูข้อมูลและติดตามสถานะได้อย่างเดียว (Read-only)</option>
+            <option value="edit">✏️ ดูและแก้ไข/กรอกข้อมูลของฝ่ายตนเองได้ (View & Edit)</option>
+          </select>
+        </div>
+
+        <div id="edit-sec-container" class="mb-4">
+            <div id="edit-user-sections-list"></div>
+        </div>
+        <div id="edit-dept-container" class="mb-4" style="display:none;">
+            <div id="edit-user-dept-list"></div>
+        </div>
+        
+        <button class="qa-btn-primary w-100" onclick="saveEditUserSections()"><i class="bi bi-save-fill me-1"></i>บันทึกการแก้ไข</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<?!= include('js_utils'); ?>
+<?!= include('js_core'); ?>
+<?!= include('js_render'); ?>
+<?!= include('js_auth'); ?>
+<?!= include('js_user'); ?>
+<?!= include('js_admin'); ?>
+<?!= include('js_table'); ?>
+<?!= include('js_formbuilder'); ?>
+<?!= include('js_theme'); ?>
+<?!= include('js_iqa'); ?>
+
+</body>
+</html>

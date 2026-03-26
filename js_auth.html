@@ -1,0 +1,255 @@
+<script>
+// ============================================================
+// js_auth.html — Authentication & Registration
+// ============================================================
+
+var tempUnregEmail = "";
+
+// ✅ นำมาวางตรงนี้ได้เลยครับ (เพื่อให้ระบบสร้างปุ่มตัวเลือกตอนเข้าหน้าสมัคร)
+function populateRegisterSections() {
+  buildSectionChips("reg-sections-list", []);
+  if(typeof buildDeptChips === 'function') buildDeptChips("reg-dept-list", []);
+}
+/*
+function loginWithGoogle() {
+  var btn=document.getElementById("btnGoogleLogin"), errArea=document.getElementById("login-error-area");
+  if(errArea) errArea.innerHTML="";
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-2"></span> กำลังตรวจสอบ...';}
+  function resetBtn(){if(btn){btn.disabled=false;btn.innerHTML='<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg> เข้าสู่ระบบด้วยบัญชี @butc.ac.th';}}
+  google.script.run
+    .withSuccessHandler(function(res){
+      resetBtn();
+      if(!res){showToast("ไม่ได้รับข้อมูล","danger");return;}
+      if(res.status==="success"){
+        APP.user=res; saveSession(); updateNavbar(); startIdleTimer();
+        showToast("ยินดีต้อนรับ "+res.fullName,"success");
+        // Navigate ทันที
+        if(res.role==="admin") goToAdminDashboard();
+        else if(res.role==="manager") goToManagerDashboard();
+        else goToUserForm();
+        // Background refresh
+        setTimeout(function(){
+          refreshAllData(function(){
+            if(res.role==="admin"){renderAdminDashboard();renderSectionList();renderFormList();loadAllUsers();}
+            else if(res.role==="manager") renderManagerDashboard();
+            else loadUserSections();
+          });
+        },100);
+      } else if(res.status==="unregistered"){
+        tempUnregEmail=res.email;
+        document.getElementById("unreg-email-display").innerText=res.email;
+        new bootstrap.Modal(document.getElementById("modal-unregistered")).show();
+      } else if(res.status==="wrong_domain"){
+        document.getElementById("wrong-email-display").innerText=res.email;
+        document.getElementById("btn-switch-account").href=res.url;
+        new bootstrap.Modal(document.getElementById("modal-wrong-domain")).show();
+      } else if(res.status==="auth_required"){
+        if(errArea) errArea.innerHTML='<div class="qa-alert qa-alert-danger mt-3"><i class="bi bi-shield-x"></i><div><strong>ตรวจสอบสิทธิ์ไม่สำเร็จ</strong><br>อาจเกิดจาก Incognito Mode หรือ Cookies ถูกบล็อก<br><a href="'+res.url+'" target="_blank" class="qa-btn-danger btn-sm d-inline-flex mt-2">เปิดหน้าตรวจสอบสิทธิ์</a></div></div>';
+      } else showToast(res.message||"เกิดข้อผิดพลาด","danger");
+    })
+    .withFailureHandler(function(err){resetBtn();showToast("Error: "+(err.message||err),"danger");})
+    .verifyGoogleWorkspaceIdentity();
+}*/
+
+function loginWithGoogle() {
+  var btn = document.getElementById("btnGoogleLogin");
+  var errArea = document.getElementById("login-error-area");
+  
+  if (errArea) errArea.innerHTML = "";
+  if (btn) { 
+    btn.disabled = true; 
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> กำลังตรวจสอบ...'; 
+  }
+  
+  function resetBtn() {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg> เข้าสู่ระบบด้วยบัญชี @butc.ac.th';
+    }
+  }
+
+  google.script.run
+    .withSuccessHandler(function(res){
+      resetBtn();
+      if (!res) {
+        showToast("ไม่ได้รับข้อมูล", "danger");
+        return;
+      }
+      
+      // ✅ ดึง URL จาก Backend และตั้งค่า target="_top" เพื่อให้ลิงก์เปิดทับหน้าเว็บอย่างถูกต้อง
+      var switchAccountUrl = res.switchUrl || res.url || "https://accounts.google.com/AccountChooser";
+      var switchBtnHtml = '<a href="' + switchAccountUrl + '" target="_top" class="qa-btn-ghost w-100 mt-2" style="justify-content:center; border-color:var(--border-2);"><i class="bi bi-arrow-left-right me-2 text-primary-c"></i>เปลี่ยนบัญชี Google ใหม่</a>';
+      
+      if (res.status === "success") {
+        APP.user = res; saveSession(); updateNavbar(); startIdleTimer();
+        showToast("ยินดีต้อนรับ " + res.fullName, "success");
+        if (res.role === "admin") goToAdminDashboard();
+        else if (res.role === "manager") goToManagerDashboard();
+        else goToUserForm();
+        
+        setTimeout(function(){
+          refreshAllData(function(){
+            if(res.role === "admin") { renderAdminDashboard(); renderSectionList(); renderFormList(); loadAllUsers(); }
+            else if(res.role === "manager") renderManagerDashboard();
+            else loadUserSections();
+          });
+        }, 100);
+        
+      } else if (res.status === "unregistered") {
+        tempUnregEmail = res.email;
+        document.getElementById("unreg-email-display").innerText = res.email;
+        new bootstrap.Modal(document.getElementById("modal-unregistered")).show();
+        // โชว์ปุ่มเปลี่ยนบัญชี
+        if(errArea) errArea.innerHTML = switchBtnHtml;
+        
+      } else if (res.status === "wrong_domain") {
+        document.getElementById("wrong-email-display").innerText = res.email;
+        document.getElementById("btn-switch-account").href = switchAccountUrl;
+        document.getElementById("btn-switch-account").setAttribute("target", "_top"); // ✅ ป้องกัน error หน้า modal
+        new bootstrap.Modal(document.getElementById("modal-wrong-domain")).show();
+        if(errArea) errArea.innerHTML = '<div class="qa-alert qa-alert-warning mt-3"><i class="bi bi-envelope-x"></i><span>ใช้อีเมลผิดโดเมน (' + res.email + ')</span></div>' + switchBtnHtml;
+        
+      } else if (res.status === "auth_required") {
+        if(errArea) errArea.innerHTML = '<div class="qa-alert qa-alert-danger mt-3"><i class="bi bi-shield-x"></i><div><strong>ตรวจสอบสิทธิ์ไม่สำเร็จ</strong><br>อาจเกิดจาก Incognito Mode หรือ Cookies ถูกบล็อก<br><a href="' + switchAccountUrl + '" target="_top" class="qa-btn-danger btn-sm d-inline-flex mt-2">เปิดหน้าตรวจสอบสิทธิ์</a></div></div>' + switchBtnHtml;
+        
+      } else {
+        if(errArea) errArea.innerHTML = '<div class="qa-alert qa-alert-danger mt-3"><i class="bi bi-x-circle-fill"></i><span>' + (res.message || "เกิดข้อผิดพลาด") + '</span></div>' + switchBtnHtml;
+        showToast(res.message || "เกิดข้อผิดพลาด", "danger");
+      }
+    })
+    .withFailureHandler(function(err){
+      resetBtn();
+      showToast("Error: " + (err.message || err), "danger");
+      if(errArea) errArea.innerHTML = '<div class="qa-alert qa-alert-danger mt-3"><i class="bi bi-wifi-off"></i><span>การเชื่อมต่อขัดข้อง</span></div>';
+    })
+    .verifyGoogleWorkspaceIdentity();
+}
+
+
+function proceedToRegister(){
+  bootstrap.Modal.getInstance(document.getElementById("modal-unregistered")).hide();
+  document.getElementById("reg-email").value=tempUnregEmail;
+  populateRegisterSections();
+  switchView("view-register");
+}
+
+function handleRegistration(event){
+  event.preventDefault();
+  var btn = document.getElementById("btnRegister");
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...'; }
+  
+  var fd = new FormData(event.target);
+  var positions = fd.getAll("positions");
+  var isMgr = positions.includes("ผู้บริหาร"); // เช็คว่าเป็น Manager ไหม
+  
+  // ✅ ดึงค่าจากกล่องให้ตรงกับบทบาท (Manager ดึงจากฝ่าย | User ดึงจากงานย่อย)
+  var sectionsToSave = isMgr ? getSelectedChips("reg-dept-list") : getSelectedChips("reg-sections-list"); 
+  
+  var data = { 
+      email: fd.get("email"), prefix: fd.get("prefix"), fname: fd.get("fname"), lname: fd.get("lname"), 
+      phone: fd.get("phone"), positions: positions, sections: sectionsToSave 
+  };
+  
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-person-check-fill me-1"></i>สมัครสมาชิก';}
+      if(res.success){ showToast("สมัครสำเร็จ! กรุณาเข้าสู่ระบบใหม่","success"); switchView("view-login"); event.target.reset(); }
+      else showToast(res.message || "เกิดข้อผิดพลาด","danger");
+    })
+    .withFailureHandler(function(err){
+      if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-person-check-fill me-1"></i>สมัครสมาชิก';}
+      showToast(err.message || err, "danger");
+    })
+    .registerUser(data);
+}
+/*function handleRegistration(event){
+  event.preventDefault();
+  var btn = document.getElementById("btnRegister");
+  if(btn){
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...';
+  }
+  
+  var fd = new FormData(event.target);
+  
+  // ✅ ดึงค่า Section ที่ถูกเลือกจากระบบ Chip ตัวใหม่
+  var selectedSections = getSelectedChips("reg-sections-list"); 
+  
+  var data = {
+    email: fd.get("email"),
+    prefix: fd.get("prefix"),
+    fname: fd.get("fname"),
+    lname: fd.get("lname"),
+    phone: fd.get("phone"),
+    positions: fd.getAll("positions"),
+    sections: selectedSections // ✅ อัปเดตให้ใช้ค่าที่ดึงมาใหม่
+  };
+  
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-person-check-fill me-1"></i>สมัครสมาชิก';}
+      if(res.success){
+        showToast("สมัครสำเร็จ! กรุณาเข้าสู่ระบบใหม่","success");
+        switchView("view-login");
+        event.target.reset();
+        // เคลียร์ปุ่มที่เลือกไว้
+        document.querySelectorAll("#reg-sections-list_chips .qa-chip-btn").forEach(b => b.classList.remove("selected"));
+      }
+      else showToast(res.message || "เกิดข้อผิดพลาด","danger");
+    })
+    .withFailureHandler(function(err){
+      if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-person-check-fill me-1"></i>สมัครสมาชิก';}
+      showToast(err.message || err, "danger");
+    })
+    .registerUser(data);
+}*/
+/*
+function handleRegistration(event){
+  event.preventDefault();
+  var btn=document.getElementById("btnRegister");
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...';}
+  var fd=new FormData(event.target);
+  var data={
+    email:fd.get("email"),prefix:fd.get("prefix"),fname:fd.get("fname"),
+    lname:fd.get("lname"),phone:fd.get("phone"),
+    positions:fd.getAll("positions"),sections:fd.getAll("sections")
+  };
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-person-check-fill me-1"></i>สมัครสมาชิก';}
+      if(res.success){showToast("สมัครสำเร็จ! กรุณาเข้าสู่ระบบใหม่","success");switchView("view-login");event.target.reset();}
+      else showToast(res.message||"เกิดข้อผิดพลาด","danger");
+    })
+    .withFailureHandler(function(err){
+      if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-person-check-fill me-1"></i>สมัครสมาชิก';}
+      showToast(err.message||err,"danger");
+    })
+    .registerUser(data);
+}*/
+
+function checkRegPositions() {
+  // ดึงรายการตำแหน่งที่ถูกติ๊ก
+  var cbs = Array.from(document.querySelectorAll('#regForm input[name="positions"]:checked')).map(function(x){return x.value;});
+  var notice = document.getElementById("reg-mgr-notice");
+  
+  // ✅ เช็คว่ามีคำว่า "ผู้บริหาร" รวมอยู่ด้วยหรือไม่
+  var isMgr = cbs.includes("ผู้บริหาร"); 
+  
+  // ✅ ถ้าเป็น Manager ให้แสดง Department | ถ้าเป็น User ให้แสดง Section
+  document.getElementById("reg-dept-container").style.display = isMgr ? "block" : "none";
+  document.getElementById("reg-sec-container").style.display  = isMgr ? "none" : "block";
+  
+  if (isMgr) {
+    notice.style.display = "flex";
+    if (cbs.length === 1) {
+      notice.innerHTML = '<i class="bi bi-info-circle-fill"></i><div><strong>สิทธิ์ของคุณ:</strong> ดูข้อมูลและติดตามสถานะได้อย่างเดียว<br><small>หากต้องการแก้ไข/กรอกข้อมูลด้วย กรุณาติดต่อ Admin หรือเลือกตำแหน่งอื่นร่วมด้วย</small></div>';
+    } else {
+      notice.innerHTML = '<i class="bi bi-info-circle-fill"></i><div><strong>สิทธิ์ของคุณ:</strong> เป็นผู้บริหาร ที่สามารถดูและแก้ไข/กรอกข้อมูลของฝ่ายตนเองได้</div>';
+    }
+  } else {
+    notice.style.display = "none";
+  }
+}
+
+
+</script>

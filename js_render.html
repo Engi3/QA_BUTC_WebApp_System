@@ -1,0 +1,635 @@
+<script>
+// ============================================================
+// js_render.html — Public dashboard, section cards, modals
+// FIXED: removed all template literals (backticks)
+// ============================================================
+
+function renderDeadlineBanner() {
+  var yearEl=document.getElementById("public-year-select"), banner=document.getElementById("deadline-banner");
+  if(!banner||!yearEl||!yearEl.value||yearEl.value.indexOf("ยังไม่มี")>=0){if(banner)banner.style.display="none";return;}
+  var year=yearEl.value, setting=null;
+  for(var i=0;i<APP.settings.length;i++){if(String(APP.settings[i].year)===String(year)){setting=APP.settings[i];break;}}
+  if(!setting){banner.style.display="none";return;}
+  banner.style.display="flex";
+  var now=new Date(), hasRange=setting.startDate&&setting.endDate;
+  var html='<i class="bi bi-calendar-event fs-4" style="color:var(--primary);"></i><div class="d-flex flex-wrap gap-3 align-items-center">';
+  html+='<div class="qa-deadline-item"><span class="fw-700" style="color:var(--txt);">ปีการศึกษา '+setting.year+'</span></div>';
+  if(hasRange){
+    var start=new Date(setting.startDate), end=new Date(setting.endDate);
+    start.setHours(0,0,0,0); end.setHours(23,59,59,999);
+    var isOpen=setting.isOpen&&now>=start&&now<=end, diff=Math.ceil((end-now)/(1000*60*60*24));
+    html+='<div class="qa-deadline-item"><span class="'+(isOpen?"qa-deadline-open":"qa-deadline-closed")+'">'+(isOpen?"🟢 เปิดรับข้อมูล":"🔴 ปิดระบบ")+'</span></div>';
+    html+='<div class="qa-deadline-item" style="color:var(--txt-3);">'+toThaiDate(setting.startDate)+' — '+toThaiDate(setting.endDate)+'</div>';
+    if(isOpen&&diff>=0) html+='<div class="qa-deadline-item"><span class="qa-countdown '+(diff<=3?"warn":"ok")+'">'+(diff<=0?"วันสุดท้าย!":"เหลือ "+diff+" วัน")+'</span></div>';
+    else if(!isOpen&&now<start) html+='<div class="qa-deadline-item"><span class="qa-countdown closed">เปิดอีก '+Math.ceil((start-now)/(1000*60*60*24))+' วัน</span></div>';
+    else if(!isOpen) html+='<div class="qa-deadline-item"><span class="qa-countdown closed">หมดเวลาแล้ว</span></div>';
+  } else {
+    html+='<div class="qa-deadline-item"><span class="'+(setting.isOpen?"qa-deadline-open":"qa-deadline-closed")+'">'+(setting.isOpen?"🟢 เปิดรับข้อมูล":"🔴 ปิดระบบ")+'</span></div>';
+  }
+  banner.innerHTML=html+'</div>';
+}
+
+function renderPublicDashboard() {
+  try {
+    var yearEl = document.getElementById("public-year-select");
+    if (!yearEl || !yearEl.value || yearEl.value.indexOf("ยังไม่มี") >= 0) return;
+    
+    var year = yearEl.value;
+    var active = APP.sections.filter(function(s){return s.isActive;});
+    var yearData = APP.dashboard.filter(function(d){return String(d.year) === String(year);});
+
+    // คำนวณ progress จากจำนวนฟิลด์ที่กรอก (ไม่ใช่จำนวน Section ที่ส่ง)
+    var totalFields = 0, completedFields = 0;
+    active.forEach(function(sec) {
+      var dashRow = null;
+      for (var i = 0; i < yearData.length; i++) { if (yearData[i].sectionId === sec.sectionId) { dashRow = yearData[i]; break; } }
+      var dataObj = {};
+      if (dashRow && dashRow.dataJson) { try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) {} }
+      var prog = _calcFieldProgress(sec.sectionId, APP.forms, dataObj);
+      totalFields += prog.total;
+      completedFields += prog.completed;
+    });
+    var pct = totalFields > 0 ? Math.round(completedFields / totalFields * 100) : 0;
+    var sub = yearData.length;
+    var total = active.length;
+
+    var sr = document.getElementById("public-stats-row");
+    if (sr) {
+      sr.innerHTML =
+        '<div class="qa-stat-card"><div class="qa-stat-num">' + total + '</div><div class="qa-stat-label">Section ทั้งหมด</div></div>' +
+        '<div class="qa-stat-card success"><div class="qa-stat-num">' + sub + '</div><div class="qa-stat-label">ส่งข้อมูลแล้ว</div></div>' +
+        '<div class="qa-stat-card warning"><div class="qa-stat-num">' + completedFields + ' / ' + totalFields + '</div><div class="qa-stat-label">ฟิลด์ที่กรอก</div></div>' +
+        '<div class="qa-stat-card accent"><div class="qa-stat-num">' + pct + '%</div><div class="qa-stat-label">ความคืบหน้ารวม</div></div>' +
+        '<div class="qa-stat-card info"><div class="qa-stat-num" id="visit-count">' + ((APP.visits && APP.visits.today) || 0) + '</div><div class="qa-stat-label">ผู้เข้าชมวันนี้</div></div>';
+    }
+    
+    var bar = document.getElementById("public-progress-bar");
+    var pctEl = document.getElementById("public-progress-pct");
+    if (bar) bar.style.width = pct + "%"; 
+    if (pctEl) pctEl.innerText = pct + "%";
+    
+    // เรียกฟังก์ชันวาดการ์ดอย่างปลอดภัย
+    if (typeof buildSectionCards === 'function') {
+      buildSectionCards(active, yearData, "public-section-grid", year);
+    } else {
+      console.error("buildSectionCards function is missing!");
+      document.getElementById("public-section-grid").innerHTML = '<div class="qa-alert qa-alert-danger">ระบบขัดข้อง: ไม่พบฟังก์ชันสร้างการ์ด</div>';
+    }
+    
+    renderDeadlineBanner();
+    
+    // ป้องกัน IQA พัง
+    try {
+      var iqaPanel = document.getElementById("home-panel-iqa");
+      if (iqaPanel && iqaPanel.style.display !== "none" && typeof renderIqaPublicView === 'function') {
+        renderIqaPublicView();
+      }
+    } catch(iqaErr) {
+      console.warn("IQA render skipped:", iqaErr);
+    }
+    
+  } catch(err) {
+    console.error("Error in renderPublicDashboard:", err);
+  }
+}
+
+function homeSelectTab(tab) {
+  var qaPanel = document.getElementById("home-panel-qa");
+  var iqaPanel = document.getElementById("home-panel-iqa");
+  var qaBtn = document.getElementById("home-tab-qa-btn");
+  var iqaBtn = document.getElementById("home-tab-iqa-btn");
+  
+  if (qaPanel)  qaPanel.style.display  = tab === "qa"  ? "block" : "none";
+  if (iqaPanel) iqaPanel.style.display = tab === "iqa" ? "block" : "none";
+  
+  if (qaBtn)  qaBtn.className = tab === "qa" ? "qa-tab-link active" : "qa-tab-link";
+  if (iqaBtn) iqaBtn.className = tab === "iqa" ? "qa-tab-link active" : "qa-tab-link";
+  
+  // โหลดหน้าจอ IQA Public View เมื่อคลิกที่แท็บ
+  if (tab === "iqa" && typeof renderIqaPublicView === "function") {
+    renderIqaPublicView();
+  }
+}
+
+// buildSectionCards — defined in js_user.html
+
+function openViewModal(secId, secName, year) {
+  var yr=year||(document.getElementById("public-year-select")||{}).value||"";
+  var sub=null;
+  for(var i=0;i<APP.dashboard.length;i++){if(APP.dashboard[i].sectionId===secId&&String(APP.dashboard[i].year)===String(yr)){sub=APP.dashboard[i];break;}}
+  if(!sub) return showToast("ไม่พบข้อมูล","warning");
+  document.getElementById("modal-view-title").innerHTML='<i class="bi bi-folder-open-fill me-2"></i>'+escHtml(secName)+' (ปี '+yr+')';
+  document.getElementById("modal-submitter-info").innerHTML='<i class="bi bi-person-check-fill fs-4"></i><div>ผู้รับผิดชอบ: <strong>'+escHtml(sub.submitterName||"-")+'</strong> | อัปเดต: '+toThaiDate(sub.lastUpdate,true)+'</div>';
+  var section=null;
+  for(var i=0;i<APP.sections.length;i++){if(APP.sections[i].sectionId===secId){section=APP.sections[i];break;}}
+  var secForms=section?getFormsForSection(section):[];
+  var dataObj={}; try{dataObj=JSON.parse(sub.dataJson||"{}");}catch(e){}
+  document.getElementById("modal-view-body").innerHTML=secForms.length?renderFormsRO(secForms,dataObj):renderRawRO(dataObj);
+  new bootstrap.Modal(document.getElementById("modal-view-data")).show();
+}
+
+function renderFormsRO(forms, dataObj) {
+  var html="";
+  for(var i=0;i<forms.length;i++){
+    var f=forms[i];
+    html+='<div class="qa-glass-card mb-3 p-0">'
+      +'<div class="qa-form-card-head"><i class="bi bi-file-earmark-text me-2"></i>'+escHtml(f.formName)+'</div>';
+    if(f.description) html+='<div class="qa-form-card-desc"><i class="bi bi-info-circle me-2"></i>'+escHtml(f.description)+'</div>';
+    if(f.note)        html+='<div class="qa-form-card-note"><i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i><span>'+escHtml(f.note)+'</span></div>';
+    html+='<div class="p-4">'+renderFieldsRO(f.fields||[],dataObj)+'</div></div>';
+  }
+  return html;
+}
+
+function _extractTableRows(fieldKey, colDefs, dataObj) {
+  var cols=(colDefs||"").split(",").map(function(c){return c.trim();}).filter(Boolean);
+  if(!cols.length) return {cols:[], rows:[]};
+  var maxR=0;
+  var totalKey=fieldKey+"_total_rows";
+  if(dataObj[totalKey]) maxR=parseInt(dataObj[totalKey])||0;
+  if(maxR===0){
+    Object.keys(dataObj).forEach(function(k){
+      var base=fieldKey.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+      var m=k.match(new RegExp("^"+base+"_col\\d+_(\\d+)$"));
+      if(m) maxR=Math.max(maxR,parseInt(m[1])+1);
+    });
+  }
+  var rows=[];
+  for(var r=0;r<maxR;r++){
+    var row=cols.map(function(_,ci){return dataObj[fieldKey+"_col"+ci+"_"+r]||"";});
+    if(row.some(function(v){return v.trim()!==""})) rows.push(row);
+  }
+  return {cols:cols, rows:rows};
+}
+
+function _renderTableRO(label, fieldKey, colDefs, dataObj) {
+  var t=_extractTableRows(fieldKey, colDefs, dataObj);
+  if(!t.cols.length) return '<div class="mb-3"><div class="qa-label">'+escHtml(label)+'</div><div class="qa-readonly-val">ไม่มีคอลัมน์</div></div>';
+  var thead=t.cols.map(function(c){return '<th>'+escHtml(c)+'</th>';}).join("")+'<th>-</th>';
+  var tbody="";
+  if(!t.rows.length){
+    tbody='<tr><td colspan="'+(t.cols.length+1)+'" style="text-align:center;color:var(--txt-muted);padding:12px;">ไม่มีข้อมูล</td></tr>';
+  } else {
+    tbody=t.rows.map(function(row){
+      return '<tr>'+row.map(function(cell){return '<td>'+escHtml(cell||"-")+'</td>';}).join("")+'<td></td></tr>';
+    }).join("");
+  }
+  return '<div class="mb-3"><div class="qa-label">'+escHtml(label)+'</div>'
+    +'<div style="overflow-x:auto;"><table class="qa-data-table"><thead><tr>'+thead+'</tr></thead><tbody>'+tbody+'</tbody></table></div></div>';
+}
+/*
+function renderFieldsRO(fields, dataObj) {
+  if(!fields.length) return '<p style="color:var(--txt-muted);">ไม่มีฟิลด์</p>';
+  var html="";
+  for(var i=0;i<fields.length;i++){
+    var f=fields[i], v=dataObj[f.key]!==undefined?dataObj[f.key]:"-";
+  
+// ✅ เพิ่มส่วนดักจับและโชว์ภาพขนาดจริง (สำหรับ Modal ดูข้อมูล)
+    if(f.type === "image"){
+    var imgHtml = "";
+    if (v && v !== "-" && String(v).indexOf("data:image") === 0) {
+      // ให้ภาพกว้างสุดเต็มพื้นที่กล่อง (100%) เพื่อให้เห็นชัดเจนเหมือนขนาดจริง
+      imgHtml = '<img src="' + v + '" style="max-width:100%; height:auto; border-radius:8px; border:1.5px solid var(--border); display:block; margin-top:8px;">';
+    } else {
+      imgHtml = '<div class="qa-readonly-val">ไม่มีรูปภาพ</div>';
+    }
+    html += '<div class="mb-3"><div class="qa-label">' + escHtml(f.label) + '</div>' + imgHtml + '</div>';
+    continue;
+  }
+
+
+    if(f.type==="table"){
+      // ใช้ enhanced table RO ถ้ามี tableDef
+      if (f.tableDef && f.tableDef.cols && f.tableDef.cols.length) {
+        html += _renderEnhancedTableRO(f, dataObj);
+      } else {
+        html+=_renderTableRO(f.label,f.key,f.columns||"",dataObj);
+      }
+      continue;
+    }
+    if(f.type==="checkbox"){
+      html+='<div class="mb-3"><div class="qa-label">'+escHtml(f.label)+'</div><div class="qa-readonly-val">'+((v==="Y"||v===true)?"✅ ใช่":"❌ ไม่ใช่")+'</div></div>'; continue;
+    }
+    if(f.type==="link"){
+      var url=escHtml(String(v)), isUrl=v&&v!=="-"&&(String(v).indexOf("http://")===0||String(v).indexOf("https://")===0);
+      html+='<div class="mb-3"><div class="qa-label">'+escHtml(f.label)+'</div>'+(isUrl?'<a href="'+url+'" target="_blank" class="qa-readonly-link"><i class="bi bi-box-arrow-up-right me-2"></i>'+url+'</a>':'<div class="qa-readonly-val">'+url+'</div>')+'</div>'; continue;
+    }
+    if(f.type==="money"){
+      html+='<div class="mb-3"><div class="qa-label">'+escHtml(f.label)+'</div><div class="qa-readonly-money">'+_formatMoneyRO(v)+'</div></div>'; continue;
+    }
+    if(f.type==="toggle"){
+      var isOn=v==="ON"||v==="Y"||v===true||v==="true";
+      html+='<div class="mb-3"><div class="qa-label">'+escHtml(f.label)+'</div><span class="'+(isOn?"qa-readonly-toggle-on":"qa-readonly-toggle-off")+'">'+(isOn?"✅ เปิด":"❌ ปิด")+'</span></div>'; continue;
+    }
+    html+='<div class="mb-3"><div class="qa-label">'+escHtml(f.label)+'</div><div class="qa-readonly-val">'+escHtml(String(v))+'</div></div>';
+  }
+  return html;
+}*/
+
+// ── แสดง "แก้ไขล่าสุดโดย / เวลา" ระดับฟิลด์ ──
+function _fieldAuditTag(key, dataObj) {
+  var by = dataObj[key + "__by"];
+  var at = dataObj[key + "__at"];
+  if (!by && !at) return "";
+  return '<div style="font-size:0.68rem;color:var(--txt-muted);margin-top:4px;line-height:1.4;">'
+    + '<i class="bi bi-pencil-fill me-1" style="font-size:0.6rem;opacity:.7;"></i>'
+    + (by ? escHtml(by) : "")
+    + (at ? ' &nbsp;·&nbsp; ' + toThaiDate(at, true) : '')
+    + '</div>';
+}
+
+function renderFieldsRO(fields, dataObj) {
+  if(!fields.length) return '<p style="color:var(--txt-muted);">ไม่มีฟิลด์</p>';
+  var html="";
+  for(var i=0;i<fields.length;i++){
+    var f=fields[i], v=dataObj[f.key]!==undefined?dataObj[f.key]:"-";
+    var audit=_fieldAuditTag(f.key,dataObj);
+
+    if(f.type === "image"){
+      var imgHtml = "";
+      if (v && v !== "-" && String(v).indexOf("data:image") === 0) {
+        imgHtml = '<img src="' + v + '" style="max-width:100%; height:auto; border-radius:8px; border:1.5px solid var(--border); display:block; margin-top:8px;">';
+      } else {
+        imgHtml = '<div class="qa-readonly-val">ไม่มีรูปภาพ</div>';
+      }
+      html += '<div class="mb-3"><div class="qa-label">' + escHtml(f.label) + '</div>' + imgHtml + audit + '</div>';
+      continue;
+    }
+
+    if(f.type==="table"){
+      if (f.tableDef && f.tableDef.cols && f.tableDef.cols.length) {
+        html += _renderEnhancedTableRO(f, dataObj);
+      } else {
+        html+=_renderTableRO(f.label,f.key,f.columns||"",dataObj);
+      }
+      continue;
+    }
+    if(f.type==="checkbox"){
+      html+='<div class="mb-3"><div class="qa-label">'+escHtml(f.label)+'</div><div class="qa-readonly-val">'+((v==="Y"||v===true)?"✅ ใช่":"❌ ไม่ใช่")+'</div>'+audit+'</div>'; continue;
+    }
+    if(f.type==="link"){
+      var url=escHtml(String(v)), isUrl=v&&v!=="-"&&(String(v).indexOf("http://")===0||String(v).indexOf("https://")===0);
+      html+='<div class="mb-3"><div class="qa-label">'+escHtml(f.label)+'</div>'+(isUrl?'<a href="'+url+'" target="_blank" class="qa-readonly-link"><i class="bi bi-box-arrow-up-right me-2"></i>'+url+'</a>':'<div class="qa-readonly-val">'+url+'</div>')+audit+'</div>'; continue;
+    }
+    if(f.type==="money"){
+      html+='<div class="mb-3"><div class="qa-label">'+escHtml(f.label)+'</div><div class="qa-readonly-money">'+_formatMoneyRO(v)+'</div>'+audit+'</div>'; continue;
+    }
+    if(f.type==="toggle"){
+      var isOn=v==="ON"||v==="Y"||v===true||v==="true";
+      html+='<div class="mb-3"><div class="qa-label">'+escHtml(f.label)+'</div><span class="'+(isOn?"qa-readonly-toggle-on":"qa-readonly-toggle-off")+'">'+(isOn?"✅ เปิด":"❌ ปิด")+'</span>'+audit+'</div>'; continue;
+    }
+    html+='<div class="mb-3"><div class="qa-label">'+escHtml(f.label)+'</div><div class="qa-readonly-val">'+escHtml(String(v))+'</div>'+audit+'</div>';
+  }
+  return html;
+}
+
+// ── ดึงฟอร์มที่มีฟิลด์อย่างน้อย 1 ตัวที่มองเห็นได้จาก Section นี้ ──
+function getFormsForSection(sec) {
+  if (!sec) return [];
+  return (APP.forms || []).filter(function(f) {
+    if (!f.isActive) return false;
+    return (f.fields || []).some(function(field) {
+      if (!field.sectionIds || !field.sectionIds.length) return true;
+      return field.sectionIds.indexOf(sec.sectionId) >= 0;
+    });
+  });
+}
+
+// ── คำนวณความคืบหน้าระดับฟิลด์ (ไม่นับ divider) ──
+function _calcFieldProgress(secId, allForms, dataObj) {
+  var total = 0, completed = 0;
+  (allForms || []).forEach(function(form) {
+    if (!form.isActive) return;
+    (form.fields || []).forEach(function(field) {
+      if (field.type === "divider") return;
+      if (!field.sectionIds || !field.sectionIds.length || field.sectionIds.indexOf(secId) >= 0) {
+        total++;
+        var v = dataObj[field.key];
+        if (v !== undefined && v !== null && v !== "") completed++;
+      }
+    });
+  });
+  return { total: total, completed: completed, pct: total > 0 ? Math.round(completed / total * 100) : 0 };
+}
+
+function renderRawRO(dataObj) {
+  var tableBaseKeys={}, totalRowKeys={}, normalKeys=[], extraKeys=[];
+  Object.keys(dataObj).forEach(function(k){
+    if(k.endsWith("_total_rows")){totalRowKeys[k]=true;return;}
+    if(k.endsWith("_label")||k.endsWith("_raw")){return;}
+    if(/_col\d+_\d+$/.test(k)){var base=k.replace(/_col\d+_\d+$/,"");tableBaseKeys[base]=true;return;}
+    if(k.indexOf("_user_extra_")===0){extraKeys.push(k);return;}
+    normalKeys.push(k);
+  });
+  var html="";
+  if(normalKeys.length){
+    html+='<div class="row">';
+    normalKeys.forEach(function(k){
+      html+='<div class="col-md-6 mb-3"><div class="qa-label">'+escHtml(k)+'</div><div class="qa-readonly-val">'+escHtml(String(dataObj[k]||"-"))+'</div></div>';
+    });
+    html+='</div>';
+  }
+  Object.keys(tableBaseKeys).forEach(function(base){
+    var maxC=0;
+    Object.keys(dataObj).forEach(function(k){
+      var esc=base.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+      var m=k.match(new RegExp("^"+esc+"_col(\\d+)_\\d+$"));
+      if(m) maxC=Math.max(maxC,parseInt(m[1])+1);
+    });
+    var fakeCols=Array.from({length:maxC},function(_,i){return "คอลัมน์ "+(i+1);});
+    html+=_renderTableRO(base,base,fakeCols.join(","),dataObj);
+  });
+  if(!html) return '<p style="color:var(--txt-muted);text-align:center;padding:24px 0;"><i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:8px;"></i>ไม่มีข้อมูล</p>';
+  return html;
+}
+
+
+// ── ฟังก์ชันตัวช่วยส่วนกลาง: แปลงและคำนวณ Section สำหรับ Manager ให้ตรงกัน 100% ทั้งระบบ ──
+function resolveManagerSections(rawIds) {
+    var assignedIds = [];
+    if (Array.isArray(rawIds)) {
+        assignedIds = rawIds;
+    } else if (typeof rawIds === 'string') {
+        try { 
+            assignedIds = JSON.parse(rawIds); 
+        } catch(e) { 
+            assignedIds = rawIds.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+        }
+    }
+
+    var resultSecIds = [];
+    var deptTexts = [];
+
+    // 1. แปลงรหัส DEPT_ เป็น SEC_ (ดึงงานย่อยทั้งหมดที่อยู่ในฝ่ายนั้น)
+    (APP.departments || []).forEach(function(d) {
+        if (assignedIds.includes(d.deptId)) {
+            var validSecs = (d.assignedSections||[]).filter(function(sid) {
+                return APP.sections.some(function(sx){ return sx.sectionId === sid && sx.isActive; });
+            });
+            resultSecIds = resultSecIds.concat(validSecs);
+            deptTexts.push(d.deptName + " (" + validSecs.length + " งาน)");
+        }
+    });
+
+    // 2. ดักจับกรณีมอบหมายเป็นรหัส SEC_ ตรงๆ
+    assignedIds.forEach(function(id) {
+        if (String(id).startsWith("SEC_")) {
+            var activeSec = APP.sections.find(function(sx){ return sx.sectionId === id && sx.isActive; });
+            if (activeSec) resultSecIds.push(id);
+        }
+    });
+
+    // 3. ลบค่าที่ซ้ำซ้อนกันทิ้ง
+    resultSecIds = resultSecIds.filter(function(item, pos) { return resultSecIds.indexOf(item) === pos; });
+
+    return {
+        sectionIds: resultSecIds,
+        displayStr: deptTexts.length > 0 ? deptTexts.join(" | ") : "ไม่ได้ระบุฝ่าย"
+    };
+}
+
+// ── หน้าจอ Dashboard ของ Manager ตัวจริง ──
+function renderManagerDashboard() {
+  var yearEl = document.getElementById("mgr-year-select");
+  if (!yearEl || !APP.user || !APP.user.profile) return;
+  var year = yearEl.value;
+  
+  // ✅ เรียกใช้ฟังก์ชันส่วนกลางเพื่อความเป๊ะ 100%
+  var resolved = resolveManagerSections(APP.user.profile.sections);
+  
+  var ms = APP.sections.filter(function(s) {
+      return s.isActive && resolved.sectionIds.includes(s.sectionId);
+  });
+
+  var yd = APP.dashboard.filter(function(d) { return String(d.year) === String(year); });
+
+  // คำนวณ progress จากจำนวนฟิลด์ที่กรอก
+  var totalFields = 0, completedFields = 0;
+  ms.forEach(function(sec) {
+    var dashRow = null;
+    for (var i = 0; i < yd.length; i++) { if (yd[i].sectionId === sec.sectionId) { dashRow = yd[i]; break; } }
+    var dataObj = {};
+    if (dashRow && dashRow.dataJson) { try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) {} }
+    var prog = _calcFieldProgress(sec.sectionId, APP.forms, dataObj);
+    totalFields += prog.total;
+    completedFields += prog.completed;
+  });
+  var sub = ms.filter(function(s) { return yd.some(function(d){ return d.sectionId === s.sectionId; }); }).length;
+  var total = ms.length;
+  var pct = totalFields > 0 ? Math.round(completedFields / totalFields * 100) : 0;
+
+  var headerDesc = document.querySelector("#view-manager-dashboard p.text-muted");
+  if (headerDesc) {
+      headerDesc.innerHTML = 'ติดตามและตรวจสอบ Section ในความดูแล<br><span style="color:var(--primary); font-size:0.85rem; font-weight:600; display:inline-block; margin-top:8px; padding:5px 12px; background:var(--primary-ul); border-radius:20px;"><i class="bi bi-building me-1"></i>ฝ่ายที่ดูแล: ' + resolved.displayStr + '</span>';
+  }
+
+  var sr = document.getElementById("mgr-stats-row");
+  if (sr) {
+    sr.innerHTML = '<div class="qa-stat-card"><div class="qa-stat-num">'+total+'</div><div class="qa-stat-label">Section รวมทั้งหมด</div></div>'
+      + '<div class="qa-stat-card success"><div class="qa-stat-num">'+sub+'</div><div class="qa-stat-label">ส่งแล้ว</div></div>'
+      + '<div class="qa-stat-card warning"><div class="qa-stat-num">'+completedFields+' / '+totalFields+'</div><div class="qa-stat-label">ฟิลด์ที่กรอก</div></div>'
+      + '<div class="qa-stat-card accent"><div class="qa-stat-num">'+pct+'%</div><div class="qa-stat-label">ความคืบหน้า</div></div>';
+  }
+  
+  if (typeof buildSectionCards === 'function') {
+    buildSectionCards(ms, yd, "mgr-section-grid", year);
+  }
+
+  var editBtn = document.getElementById("mgr-edit-data-btn");
+  if (editBtn) {
+    if (APP.user && APP.user.profile && APP.user.profile.permission === "edit") {
+      editBtn.style.display = "inline-flex";
+    } else {
+      editBtn.style.display = "none";
+    }
+  }
+}
+
+// ── Admin Verify Manager Dashboard (ระบบตรวจสอบสำหรับแอดมิน) ──
+function goToVerifyManager() {
+    switchView("view-verify-manager");
+    
+    // ✅ เพิ่ม Loading state เพื่อให้รู้ว่ากำลังโหลดข้อมูลผู้ใช้สดๆ จากหลังบ้าน
+    var grid = document.getElementById("verify-section-grid");
+    if (grid) grid.innerHTML = '<div class="text-center py-5 w-100"><div class="spinner-border text-primary" style="width:3rem;height:3rem;"></div><p class="mt-3 text-muted fw-700">กำลังซิงค์ข้อมูลผู้ใช้ล่าสุด...</p></div>';
+    
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if(res && res.success) {
+            APP.allUsersCache = res.data;
+            populateVerifyDropdowns();
+            renderVerifyDashboard();
+        } else {
+            if (grid) grid.innerHTML = '<div class="qa-alert qa-alert-danger w-100">โหลดข้อมูลล้มเหลว กรุณารีเฟรชหน้าเว็บ</div>';
+        }
+      })
+      .withFailureHandler(function(err) {
+          if (grid) grid.innerHTML = '<div class="qa-alert qa-alert-danger w-100">Error: ' + (err.message || err) + '</div>';
+      })
+      .getAllUsers();
+}
+
+function populateVerifyDropdowns() {
+    var mSel = document.getElementById("verify-mgr-select");
+    if (mSel) {
+        mSel.innerHTML = '<option value="">-- เลือก Manager --</option>';
+        if (APP.allUsersCache && APP.allUsersCache.managers) {
+            APP.allUsersCache.managers.forEach(function(m) {
+                mSel.add(new Option(m.prefix + m.fname + " " + m.lname, m.email));
+            });
+        }
+    }
+    var dSel = document.getElementById("verify-dept-select");
+    if (dSel) {
+        dSel.innerHTML = '<option value="">-- เลือกฝ่าย (Department) --</option>';
+        (APP.departments || []).forEach(function(d) {
+            if (d.isActive) dSel.add(new Option(d.deptName, d.deptId));
+        });
+    }
+    var ySel = document.getElementById("verify-year-select");
+    if (ySel) {
+        ySel.innerHTML = "";
+        (APP.settings || []).forEach(function(s) { ySel.add(new Option("ปีการศึกษา " + s.year, s.year)); });
+    }
+}
+
+
+function renderVerifyDashboard() {
+    var mSel = document.getElementById("verify-mgr-select");
+    var dSel = document.getElementById("verify-dept-select");
+    var ySel = document.getElementById("verify-year-select");
+    
+    if (!ySel || !ySel.value) return;
+    var year = ySel.value;
+    
+    var targetSections = [];
+    var title = "กรุณาเลือก Manager หรือ Department ด้านบน";
+    var subTitle = "";
+    
+    if (mSel && mSel.value) {
+        var mgr = null;
+        if (APP.allUsersCache && APP.allUsersCache.managers) {
+            mgr = APP.allUsersCache.managers.find(function(m){ 
+                return m.email.trim().toLowerCase() === mSel.value.trim().toLowerCase(); 
+            });
+        }
+        
+        if (mgr) {
+            // ✅ 1. แก้ไขการดึงค่า: บังคับให้เป็น Array เสมอ
+            var raw = mgr.sections;
+            var processedIds = [];
+            
+            if (Array.isArray(raw)) {
+                processedIds = raw;
+            } else if (typeof raw === 'string' && raw.trim() !== "") {
+                try {
+                    // พยายาม parse ถ้าเป็น JSON string เช่น "["DEPT_1"]"
+                    processedIds = JSON.parse(raw);
+                } catch(e) {
+                    // ถ้าไม่ใช่ JSON ให้แยกด้วย comma
+                    processedIds = raw.split(',').map(function(id){ return id.trim(); });
+                }
+            }
+
+            // ✅ 2. เรียกฟังก์ชันแปลง DEPT เป็น SEC
+            var resolved = resolveManagerSections(processedIds);
+            targetSections = resolved.sectionIds;
+            
+            console.log("Verify Manager:", mgr.email, "Processed IDs:", processedIds, "Resolved SECs:", targetSections);
+
+            title = "Section ในความดูแลของ: " + (mgr.prefix||"") + (mgr.fname||"") + " " + (mgr.lname||"");
+            subTitle = '<span style="color:var(--primary); font-size:0.85rem; font-weight:600; display:inline-block; margin-top:8px; padding:4px 10px; background:var(--primary-ul); border-radius:20px;"><i class="bi bi-building me-1"></i>ฝ่ายที่ดูแล: ' + resolved.displayStr + '</span>';
+        }
+    } else if (dSel && dSel.value) {
+        var dept = APP.departments.find(function(d){ return d.deptId === dSel.value; });
+        if (dept) {
+            targetSections = dept.assignedSections || [];
+            title = "Section ทั้งหมดในฝ่าย: " + dept.deptName;
+        }
+    } else {
+        // กรณีไม่ได้เลือกอะไรเลย
+        document.getElementById("verify-stats-row").innerHTML = "";
+        document.getElementById("verify-section-grid").innerHTML = '<div class="qa-alert qa-alert-warning w-100"><i class="bi bi-info-circle-fill"></i><span>เลือก Manager หรือ Department เพื่อตรวจสอบหน้าจอ Dashboard</span></div>';
+        document.getElementById("verify-grid-title").innerHTML = '<i class="bi bi-bar-chart-fill me-2"></i>' + title;
+        return;
+    }
+    
+    // ✅ 3. กรองเฉพาะ Section ที่มีอยู่จริงและ Active
+    var ms = APP.sections.filter(function(s) { 
+        // แปลง id เป็น String ทั้งคู่ป้องกันการเทียบ Type ผิดพลาด
+        return s.isActive && targetSections.map(String).includes(String(s.sectionId)); 
+    });
+    
+    var yd = APP.dashboard.filter(function(d) { return String(d.year) === String(year); });
+    var sub = ms.filter(function(s) { return yd.some(function(d){ return d.sectionId === s.sectionId; }); }).length;
+    var total = ms.length;
+    var pct = total > 0 ? Math.round(sub / total * 100) : 0;
+    
+    var sr = document.getElementById("verify-stats-row");
+    if (sr) {
+      sr.innerHTML = '<div class="qa-stat-card"><div class="qa-stat-num">'+total+'</div><div class="qa-stat-label">Section เป้าหมาย</div></div>'
+        + '<div class="qa-stat-card success"><div class="qa-stat-num">'+sub+'</div><div class="qa-stat-label">ส่งแล้ว</div></div>'
+        + '<div class="qa-stat-card warning"><div class="qa-stat-num">'+(total-sub)+'</div><div class="qa-stat-label">รอดำเนินการ</div></div>'
+        + '<div class="qa-stat-card accent"><div class="qa-stat-num">'+pct+'%</div><div class="qa-stat-label">ความคืบหน้า</div></div>';
+    }
+    
+    var vt = document.getElementById("verify-grid-title");
+    if (vt) {
+        vt.innerHTML = '<div style="margin-bottom:12px;"><i class="bi bi-bar-chart-fill me-2"></i>' + title + '</div>' + subTitle;
+    }
+    
+    if (typeof buildSectionCards === 'function') {
+      // ถ้าไม่มีข้อมูลเลย ให้โชว์ Alert แทน grid ว่างๆ
+      if (ms.length === 0) {
+          document.getElementById("verify-section-grid").innerHTML = '<div class="col-12 text-center text-muted py-4"><i class="bi bi-inbox mb-2 fs-2 d-block"></i>ไม่พบงานที่มอบหมายหรือ Section ไม่ได้เปิดใช้งาน</div>';
+      } else {
+          buildSectionCards(ms, yd, "verify-section-grid", year);
+      }
+    }
+}
+
+function renderAdminDashboard(){
+  var yearEl=document.getElementById("admin-year-select"); if(!yearEl) return;
+  var year=yearEl.value, active=APP.sections.filter(function(s){return s.isActive;});
+  var yd=APP.dashboard.filter(function(d){return String(d.year)===String(year);});
+  var sub=yd.length, total=active.length, pct=total>0?Math.round(sub/total*100):0;
+  var sr=document.getElementById("admin-stats-row");
+  if(sr) sr.innerHTML='<div class="qa-stat-card"><div class="qa-stat-num">'+total+'</div><div class="qa-stat-label">Section ทั้งหมด</div></div>'
+    +'<div class="qa-stat-card success"><div class="qa-stat-num">'+sub+'</div><div class="qa-stat-label">ส่งแล้ว</div></div>'
+    +'<div class="qa-stat-card warning"><div class="qa-stat-num">'+(total-sub)+'</div><div class="qa-stat-label">รอดำเนินการ</div></div>'
+    +'<div class="qa-stat-card accent"><div class="qa-stat-num">'+pct+'%</div><div class="qa-stat-label">อัตราการส่ง</div></div>';
+  buildSectionCards(active, yd, "admin-section-grid", year);
+  renderAdminCharts(sub, total-sub, yd);
+}
+
+function renderAdminCharts(sub, pend, yd){
+  var txtColor=getComputedStyle(document.documentElement).getPropertyValue("--txt-muted").trim()||"#64748b";
+  var gridColor=getComputedStyle(document.documentElement).getPropertyValue("--border").trim()||"rgba(0,0,0,.1)";
+  var pcEl=document.getElementById("admin-pie-chart");
+  if(pcEl){var pc=pcEl.getContext("2d");if(APP.charts.pie)APP.charts.pie.destroy();APP.charts.pie=new Chart(pc,{type:"doughnut",data:{labels:["ส่งแล้ว","รอ"],datasets:[{data:[sub,pend],backgroundColor:["#059669","rgba(0,0,0,.09)"],borderWidth:0,hoverOffset:6}]},options:{cutout:"72%",plugins:{legend:{position:"bottom",labels:{color:txtColor,font:{family:"Sarabun"}}}}}});}
+  var bcEl=document.getElementById("admin-bar-chart");
+  if(bcEl){var bc=bcEl.getContext("2d");if(APP.charts.bar)APP.charts.bar.destroy();var months=["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."],trend={};yd.forEach(function(d){if(d.lastUpdate){var m=new Date(d.lastUpdate).getMonth()+1;trend[m]=(trend[m]||0)+1;}});APP.charts.bar=new Chart(bc,{type:"bar",data:{labels:months,datasets:[{label:"Section ที่บันทึก",data:Array.from({length:12},function(_,i){return trend[i+1]||0;}),backgroundColor:"rgba(37,99,235,.7)",borderRadius:6,borderSkipped:false}]},options:{scales:{y:{beginAtZero:true,ticks:{stepSize:1,color:txtColor},grid:{color:gridColor}},x:{ticks:{color:txtColor},grid:{display:false}}},plugins:{legend:{display:false}}}});}
+}
+
+function loadVisitStats(){
+  var vs=APP.visits||{};
+  function e(id,v){var el=document.getElementById(id);if(el)el.innerText=(v!==undefined&&v!==null)?v:"--";}
+  e("stat-total-visits",vs.total); e("stat-unique-users",vs.uniqueUsers); e("stat-today",vs.today); e("stat-sections",APP.dashboard.length);
+}
+
+function switchAdminTab(tabId){
+  document.querySelectorAll(".qa-tab-content").forEach(function(el){el.classList.remove("active");});
+  document.querySelectorAll(".qa-tab-link").forEach(function(el){el.classList.remove("active");});
+  var t=document.getElementById(tabId); if(t) t.classList.add("active");
+  var a=document.querySelector('[data-tab="'+tabId+'"]'); if(a) a.classList.add("active");
+  if(tabId==="tab-theme") initThemeEditor();
+  if(tabId==="tab-stats") loadVisitStats();
+  if(tabId==="tab-iqa")   initIqaTab();
+}
+
+function _formatMoneyRO(val) {
+  var num=parseFloat(String(val).replace(/[^0-9.]/g,""));
+  if(isNaN(num)) return val||"-";
+  return num.toLocaleString("th-TH",{minimumFractionDigits:2,maximumFractionDigits:2})+" บาท";
+}
+</script>

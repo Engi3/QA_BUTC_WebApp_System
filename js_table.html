@@ -1,0 +1,634 @@
+<script>
+// ============================================================
+// js_table.html — Enhanced Table Field System
+// Features:
+//  - Admin กำหนดชื่อแถว + ชื่อคอลัมน์ได้
+//  - Admin กำหนดประเภทข้อมูลแต่ละคอลัมน์ (text/number/select/date)
+//  - Mode: Fixed rows / Dynamic rows (เพิ่มได้)
+//  - Auto-sum: แถว "รวม" และคอลัมน์ "รวม" สำหรับตัวเลข
+//  - Preview real-time
+//  - Readonly view พร้อม auto-sum
+// ============================================================
+
+// ── Table Definition Editor (in Form Builder) ───────────────
+
+/**
+ * tableDef structure:
+ * {
+ *   fixedRows: bool,          // true = admin กำหนดแถว, false = user เพิ่มแถวเอง
+ *   rows: [{label, isTotal}], // fixedRows=true เท่านั้น
+ *   cols: [{label, type, options, isTotal}],
+ *                             // type: text|number|select|date|formula
+ *   hasRowTotal: bool,        // เพิ่มแถวรวมอัตโนมัติ (ต้องมี col number)
+ *   hasColTotal: bool,        // เพิ่มคอลัมน์รวมอัตโนมัติ
+ * }
+ */
+
+// Build table editor HTML สำหรับ field ใน Form Builder
+function _fbTableEditorHTML(f) {
+  var td = f.tableDef || { fixedRows:false, rows:[], cols:[], hasRowTotal:false, hasColTotal:false };
+  var fid = f.id;
+
+  // Col type options
+  var colTypes = [
+    ["text","📝 ข้อความ"],["number","🔢 ตัวเลข"],["select","📋 Dropdown"],
+    ["date","📅 วันที่"]
+  ];
+
+  // ── Columns section ──
+  var colRows = (td.cols||[]).map(function(col, ci) {
+    var typeOpts = colTypes.map(function(t){
+      return '<option value="'+t[0]+'"'+(col.type===t[0]?" selected":"")+'>'+t[1]+'</option>';
+    }).join("");
+    var optionInput = col.type==="select"
+      ? '<input type="text" class="qa-input tbl-col-opts" value="'+escHtml(col.options||"")+'" placeholder="ตัวเลือก A,ตัวเลือก B" style="font-size:.78rem;">'
+      : '';
+    return '<div class="tbl-col-row" data-ci="'+ci+'">'
+      + '<div class="tbl-col-num">'+(ci+1)+'</div>'
+      + '<input type="text" class="qa-input tbl-col-label" value="'+escHtml(col.label||"")+'" placeholder="ชื่อคอลัมน์" style="flex:1;font-size:.82rem;" oninput="_fbTableSync(\''+fid+'\');_fbUpdatePreview();">'
+      + '<select class="qa-input tbl-col-type" style="min-width:130px;font-size:.82rem;" onchange="_fbOnColTypeChange(\''+fid+'\',this,'+ci+');_fbTableSync(\''+fid+'\');_fbUpdatePreview();">'+typeOpts+'</select>'
+      + '<button type="button" class="qa-btn-danger btn-xs" onclick="_fbTableRemoveCol(\''+fid+'\','+ci+')"><i class="bi bi-x"></i></button>'
+      + '</div>'
+      + (optionInput ? '<div style="padding:0 28px 6px;"><small style="color:var(--txt-muted);font-size:.72rem;">ตัวเลือก:</small> '+optionInput+'</div>' : '');
+  }).join("");
+
+  // ── Rows section (only when fixedRows) ──
+  var rowRows = (td.rows||[]).map(function(row, ri) {
+    return '<div class="tbl-row-row" data-ri="'+ri+'">'
+      + '<div class="tbl-col-num">'+(ri+1)+'</div>'
+      + '<input type="text" class="qa-input tbl-row-label" value="'+escHtml(row.label||"")+'" placeholder="ชื่อแถว" style="flex:1;font-size:.82rem;" oninput="_fbTableSync(\''+fid+'\');_fbUpdatePreview();">'
+      + '<button type="button" class="qa-btn-danger btn-xs" onclick="_fbTableRemoveRow(\''+fid+'\','+ri+')"><i class="bi bi-x"></i></button>'
+      + '</div>';
+  }).join("");
+
+  var rowsSection = td.fixedRows
+    ? '<div class="tbl-def-section">'
+      + '<div class="tbl-def-header"><i class="bi bi-list-ol me-1"></i>แถวข้อมูล'
+      + '<button type="button" class="qa-btn-add-field" onclick="_fbTableAddRow(\''+fid+'\')"><i class="bi bi-plus-circle-fill me-1"></i>เพิ่มแถว</button></div>'
+      + '<div class="tbl-row-list" id="tbl-rows-'+fid+'">'+rowRows+'</div>'
+      + '</div>'
+    : '';
+
+  return '<div class="tbl-def-editor" id="tbl-editor-'+fid+'">'
+
+    // ── Mode toggle ──
+    + '<div class="tbl-def-section">'
+    + '<div class="tbl-def-header"><i class="bi bi-grid me-1"></i>รูปแบบแถว</div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+    + '<label class="qa-check-item" style="font-size:.82rem;">'
+    + '<input type="radio" name="tbl-mode-'+fid+'" class="tbl-mode-radio" value="dynamic"'+((!td.fixedRows)?" checked":"")
+    + ' onchange="_fbTableModeChange(\''+fid+'\',false)">'
+    + '<span>🔄 Dynamic — User เพิ่มแถวเองได้</span></label>'
+    + '<label class="qa-check-item" style="font-size:.82rem;">'
+    + '<input type="radio" name="tbl-mode-'+fid+'" class="tbl-mode-radio" value="fixed"'+(td.fixedRows?" checked":"")
+    + ' onchange="_fbTableModeChange(\''+fid+'\',true)">'
+    + '<span>🔒 Fixed — Admin กำหนดแถวตายตัว</span></label>'
+    + '</div>'
+    + '</div>'
+
+    // ── Row header label (fixed mode only) ──
+    + (td.fixedRows
+      ? '<div class="tbl-def-section">'
+        + '<div class="tbl-def-header"><i class="bi bi-input-cursor-text me-1"></i>ชื่อหัวคอลัมน์แรก (ป้ายแถว)</div>'
+        + '<input type="text" class="qa-input tbl-row-header-label" value="'+escHtml(td.rowHeaderLabel||"")+'" placeholder="เช่น หัวข้อ, รายการ (เว้นว่างได้)" style="font-size:.82rem;" oninput="_fbTableSync(\''+fid+'\');_fbUpdatePreview();">'
+        + '</div>'
+      : '')
+
+    // ── Rows (fixed mode) ──
+    + rowsSection
+
+    // ── Columns ──
+    + '<div class="tbl-def-section">'
+    + '<div class="tbl-def-header"><i class="bi bi-layout-three-columns me-1"></i>คอลัมน์'
+    + '<button type="button" class="qa-btn-add-field" onclick="_fbTableAddCol(\''+fid+'\')"><i class="bi bi-plus-circle-fill me-1"></i>เพิ่มคอลัมน์</button></div>'
+    + '<div class="tbl-col-list" id="tbl-cols-'+fid+'">'+colRows+'</div>'
+    + '</div>'
+
+    // ── Auto-sum options ──
+    + '<div class="tbl-def-section">'
+    + '<div class="tbl-def-header"><i class="bi bi-calculator me-1"></i>ผลรวมอัตโนมัติ (เฉพาะคอลัมน์ตัวเลข)</div>'
+    + '<div style="display:flex;gap:16px;flex-wrap:wrap;">'
+    + '<label class="qa-check-item" style="font-size:.82rem;">'
+    + '<input type="checkbox" class="tbl-has-row-total"'+(td.hasRowTotal?" checked":"")+' onchange="_fbTableSync(\''+fid+'\');_fbUpdatePreview();">'
+    + '<span>➕ แสดงผลรวม <strong>ท้ายแถว</strong> (แต่ละแถวรวมทุก col ตัวเลข)</span></label>'
+    + '<label class="qa-check-item" style="font-size:.82rem;">'
+    + '<input type="checkbox" class="tbl-has-col-total"'+(td.hasColTotal?" checked":"")+' onchange="_fbTableSync(\''+fid+'\');_fbUpdatePreview();">'
+    + '<span>➕ แสดงผลรวม <strong>ท้ายตาราง</strong> (แต่ละ col รวมทุกแถว)</span></label>'
+    + '</div>'
+    + '</div>'
+
+    + '</div>';
+}
+
+// ── Table sync from DOM ──────────────────────────────────────
+function _fbTableSync(fid) {
+  var f = null; for (var i=0; i<_fbFields.length; i++) { if (_fbFields[i].id===fid) { f=_fbFields[i]; break; } }
+  if (!f) return;
+  var ed = document.getElementById("tbl-editor-"+fid); if (!ed) return;
+  if (!f.tableDef) f.tableDef = {fixedRows:false,rows:[],cols:[],hasRowTotal:false,hasColTotal:false};
+  var td = f.tableDef;
+
+  // mode
+  var modeFixed = ed.querySelector('.tbl-mode-radio[value="fixed"]');
+  td.fixedRows = modeFixed ? modeFixed.checked : false;
+
+  // row header label (fixed mode)
+  var rhlEl = ed.querySelector(".tbl-row-header-label");
+  td.rowHeaderLabel = rhlEl ? rhlEl.value : "";
+
+  // auto-sum
+  var rtEl = ed.querySelector(".tbl-has-row-total"); td.hasRowTotal = rtEl ? rtEl.checked : false;
+  var ctEl = ed.querySelector(".tbl-has-col-total"); td.hasColTotal = ctEl ? ctEl.checked : false;
+
+  // cols
+  var colItems = ed.querySelectorAll(".tbl-col-row");
+  td.cols = [];
+  colItems.forEach(function(item) {
+    var lbl = item.querySelector(".tbl-col-label");
+    var typ = item.querySelector(".tbl-col-type");
+    var opt = item.querySelector(".tbl-col-opts");
+    td.cols.push({
+      label:  lbl ? lbl.value : "",
+      type:   typ ? typ.value : "text",
+      isTotal: false,
+      options: opt ? opt.value : ""
+    });
+  });
+
+  // rows (fixed mode)
+  if (td.fixedRows) {
+    var rowItems = ed.querySelectorAll(".tbl-row-row");
+    td.rows = [];
+    rowItems.forEach(function(item) {
+      var lbl = item.querySelector(".tbl-row-label");
+      td.rows.push({ label: lbl ? lbl.value : "", isTotal: false });
+    });
+  } else {
+    td.rows = [];
+  }
+}
+
+function _fbTableModeChange(fid, isFixed) {
+  var f = null; for (var i=0; i<_fbFields.length; i++) { if (_fbFields[i].id===fid) { f=_fbFields[i]; break; } }
+  if (!f) return;
+  if (!f.tableDef) f.tableDef = {fixedRows:false,rows:[],cols:[],hasRowTotal:false,hasColTotal:false};
+  _fbTableSync(fid);
+  f.tableDef.fixedRows = isFixed;
+  if (isFixed && !f.tableDef.rows.length) {
+    f.tableDef.rows = [{label:"แถวที่ 1",isTotal:false},{label:"แถวที่ 2",isTotal:false}];
+  }
+  // Re-render table editor section
+  _fbRenderAll();
+  _fbUpdatePreview();
+}
+
+function _fbTableAddCol(fid) {
+  _fbTableSync(fid);
+  var f = null; for (var i=0; i<_fbFields.length; i++) { if (_fbFields[i].id===fid) { f=_fbFields[i]; break; } }
+  if (!f) return;
+  if (!f.tableDef) f.tableDef = {fixedRows:false,rows:[],cols:[],hasRowTotal:false,hasColTotal:false};
+  f.tableDef.cols.push({label:"คอลัมน์ "+(f.tableDef.cols.length+1), type:"text", isTotal:false, options:""});
+  _fbRenderAll(); _fbUpdatePreview();
+}
+
+function _fbTableRemoveCol(fid, ci) {
+  _fbTableSync(fid);
+  var f = null; for (var i=0; i<_fbFields.length; i++) { if (_fbFields[i].id===fid) { f=_fbFields[i]; break; } }
+  if (!f || !f.tableDef || !f.tableDef.cols) return;
+  f.tableDef.cols.splice(ci, 1);
+  _fbRenderAll(); _fbUpdatePreview();
+}
+
+function _fbTableAddRow(fid) {
+  _fbTableSync(fid);
+  var f = null; for (var i=0; i<_fbFields.length; i++) { if (_fbFields[i].id===fid) { f=_fbFields[i]; break; } }
+  if (!f || !f.tableDef) return;
+  if (!f.tableDef.rows) f.tableDef.rows = [];
+  f.tableDef.rows.push({label:"แถวที่ "+(f.tableDef.rows.length+1), isTotal:false});
+  _fbRenderAll(); _fbUpdatePreview();
+}
+
+function _fbTableRemoveRow(fid, ri) {
+  _fbTableSync(fid);
+  var f = null; for (var i=0; i<_fbFields.length; i++) { if (_fbFields[i].id===fid) { f=_fbFields[i]; break; } }
+  if (!f || !f.tableDef || !f.tableDef.rows) return;
+  f.tableDef.rows.splice(ri, 1);
+  _fbRenderAll(); _fbUpdatePreview();
+}
+
+function _fbOnColTypeChange(fid, selEl, ci) {
+  _fbTableSync(fid);
+  _fbRenderAll();
+  _fbUpdatePreview();
+}
+
+// ── Table preview (in Form Builder) ─────────────────────────
+function _fbTablePreviewHTML(f) {
+  var td = f.tableDef;
+  if (!td || !td.cols || !td.cols.length) {
+    return '<div style="border:2px dashed var(--border-2);border-radius:8px;padding:14px;text-align:center;color:var(--txt-muted);font-size:.8rem;">กำหนดคอลัมน์เพื่อดูตัวอย่าง</div>';
+  }
+  var dataCols = td.cols.filter(function(c){ return !c.isTotal; });
+  var totalCols = td.cols.filter(function(c){ return c.isTotal; });
+  var hasNumCol = dataCols.some(function(c){ return c.type==="number"||c.type==="formula"; });
+  var showRowTotal = td.hasRowTotal && hasNumCol;
+  var showColTotal = td.hasColTotal && hasNumCol;
+
+  // Header row
+  var thead = '<tr style="background:#1e3a5f;">';
+  if (td.fixedRows) thead += '<th style="color:white;padding:5px 9px;font-size:.75rem;border:1px solid rgba(255,255,255,.15);">'+escHtml(td.rowHeaderLabel||"")+'</th>';
+  td.cols.forEach(function(col) {
+    thead += '<th style="color:white;padding:5px 9px;font-size:.75rem;border:1px solid rgba(255,255,255,.15);">'+escHtml(col.label||"?")+'</th>';
+  });
+  if (showRowTotal) thead += '<th style="color:white;padding:5px 9px;font-size:.75rem;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.12);">รวม ∑</th>';
+  thead += '</tr>';
+
+  // Data rows
+  var tbody = "";
+  var exampleRows = td.fixedRows
+    ? td.rows.filter(function(r){ return !r.isTotal; })
+    : [{label:"แถวที่ 1"},{label:"แถวที่ 2"},{label:"..."}];
+
+  exampleRows.forEach(function(row, ri) {
+    tbody += '<tr>';
+    if (td.fixedRows) tbody += '<td style="font-weight:700;font-size:.78rem;background:var(--surface-3);border:1px solid var(--border);padding:4px 9px;white-space:nowrap;">'+escHtml(row.label||"แถว "+(ri+1))+'</td>';
+    td.cols.forEach(function(col) {
+      var cellStyle = "border:1px solid var(--border);padding:3px;";
+      if (col.isTotal) cellStyle += "background:var(--surface-3);font-weight:700;text-align:center;";
+      if (col.type==="formula") {
+        tbody += '<td style="'+cellStyle+'text-align:center;color:var(--success);font-size:.8rem;">∑ auto</td>';
+      } else {
+        var inp = _previewCellInput(col);
+        tbody += '<td style="'+cellStyle+'">'+inp+'</td>';
+      }
+    });
+    if (showRowTotal) tbody += '<td style="border:1px solid var(--border);padding:4px 8px;background:var(--success-l);color:var(--success);font-weight:700;text-align:center;font-size:.8rem;">∑ auto</td>';
+    tbody += '</tr>';
+  });
+
+  // Total row (fixed: isTotal rows / dynamic: auto)
+  var totalRowFixed = td.fixedRows ? td.rows.filter(function(r){return r.isTotal;}) : [];
+  totalRowFixed.forEach(function(row) {
+    tbody += '<tr style="background:var(--primary-ul);">';
+    if (td.fixedRows) tbody += '<td style="font-weight:700;font-size:.78rem;color:var(--primary);border:1px solid var(--border);padding:4px 9px;">'+escHtml(row.label||"รวม")+'</td>';
+    td.cols.forEach(function(col) {
+      tbody += '<td style="border:1px solid var(--border);padding:4px 8px;font-weight:700;text-align:center;color:var(--primary);font-size:.8rem;">∑ auto</td>';
+    });
+    if (showRowTotal) tbody += '<td style="border:1px solid var(--border);padding:4px 8px;background:var(--primary-ul);font-weight:700;text-align:center;color:var(--primary);">∑∑</td>';
+    tbody += '</tr>';
+  });
+
+  // Col total row (dynamic mode)
+  if (showColTotal && !td.fixedRows) {
+    tbody += '<tr style="background:var(--primary-ul);">';
+    if (td.fixedRows) tbody += '<td style="font-weight:700;color:var(--primary);border:1px solid var(--border);padding:4px 8px;">รวมทั้งหมด</td>';
+    td.cols.forEach(function(col) {
+      var isNum = col.type==="number"||col.type==="formula"||col.isTotal;
+      tbody += '<td style="border:1px solid var(--border);padding:4px 8px;font-weight:700;text-align:center;color:var(--primary);font-size:.8rem;">'+(isNum?"∑ auto":"")+'</td>';
+    });
+    if (showRowTotal) tbody += '<td style="border:1px solid var(--border);font-weight:700;text-align:center;color:var(--primary);">∑∑</td>';
+    tbody += '</tr>';
+  }
+
+  var dynNote = !td.fixedRows
+    ? '<div style="margin-top:6px;"><button type="button" class="qa-btn-add-field" disabled style="opacity:.5;cursor:not-allowed;font-size:.76rem;"><i class="bi bi-plus-circle-fill me-1"></i>เพิ่มแถว</button></div>'
+    : '';
+
+  return '<div style="overflow-x:auto;">'
+    + '<table style="width:100%;border-collapse:collapse;font-size:.8rem;">'
+    + '<thead>'+thead+'</thead><tbody>'+tbody+'</tbody></table></div>'
+    + dynNote;
+}
+
+function _previewCellInput(col) {
+  var st = "width:100%;border:none;background:transparent;font-size:.78rem;padding:2px 4px;opacity:.8;";
+  if (col.type==="number") return '<input type="number" disabled placeholder="0" style="'+st+'">';
+  if (col.type==="date")   return '<input type="date" disabled style="'+st+'">';
+  if (col.type==="select") {
+    var opts = (col.options||"ตัวเลือก A,ตัวเลือก B").split(",").map(function(o){return '<option>'+escHtml(o.trim())+'</option>';}).join("");
+    return '<select disabled style="'+st+'"><option>-- เลือก --</option>'+opts+'</select>';
+  }
+  return '<input type="text" disabled placeholder="ข้อความ..." style="'+st+'">';
+}
+
+// ── Override _fbExtraHTML for table ─────────────────────────
+// (เรียกจาก js_formbuilder.html แทนที่ logic เดิม)
+function _fbTableEditorSection(f) {
+  if (f.type !== "table") return "";
+  if (!f.tableDef) {
+    f.tableDef = {fixedRows:false,rows:[],cols:[
+      {label:"คอลัมน์ 1",type:"text",isTotal:false,options:""},
+      {label:"คอลัมน์ 2",type:"number",isTotal:false,options:""}
+    ],hasRowTotal:false,hasColTotal:false,rowHeaderLabel:""};
+  }
+  return _fbTableEditorHTML(f);
+}
+
+// ── Render table in user fill form ─────────────────────────
+function renderTableField(field) {
+  var td = field.tableDef;
+  if (!td || !td.cols || !td.cols.length) {
+    return '<div style="color:var(--txt-muted);font-size:.82rem;">ตารางยังไม่ได้กำหนดคอลัมน์</div>';
+  }
+  var fkey = field.key;
+  var dataCols = td.cols.filter(function(c){return !c.isTotal;});
+  var totalCols = td.cols.filter(function(c){return c.isTotal;});
+  var hasNumCol = dataCols.some(function(c){return c.type==="number"||c.type==="formula";});
+  var showRowTotal = td.hasRowTotal && hasNumCol;
+  var showColTotal = td.hasColTotal && hasNumCol;
+
+  // thead
+  var thead = '<tr style="background:#1e3a5f;">';
+  if (td.fixedRows) thead += '<th class="tbl-hd">'+escHtml(td.rowHeaderLabel||"")+'</th>';
+  td.cols.forEach(function(col, ci) {
+    thead += '<th class="tbl-hd">'+escHtml(col.label||"คอลัมน์ "+(ci+1))+'</th>';
+  });
+  if (showRowTotal) thead += '<th class="tbl-hd tbl-total-col">รวม</th>';
+  thead += '</tr>';
+
+  var html = '<div class="qa-table-wrap">';
+
+  if (td.fixedRows && td.rows && td.rows.length) {
+    // Fixed rows mode
+    var tbody = "";
+    td.rows.forEach(function(row, ri) {
+      var isTotal = row.isTotal;
+      var rowClass = isTotal ? "tbl-row-total" : "";
+      tbody += '<tr class="'+rowClass+'">';
+      tbody += '<td class="tbl-row-header">'+escHtml(row.label||"แถว "+(ri+1))+'</td>';
+      td.cols.forEach(function(col, ci) {
+        var ckey = fkey+"_r"+ri+"_c"+ci;
+        if (col.isTotal || isTotal || col.type==="formula") {
+          // Auto-computed cell
+          tbody += '<td class="tbl-cell-auto" data-formula="sum" data-row="'+ri+'" data-col="'+ci+'" id="tbl-sum-'+fkey+'-r'+ri+'-c'+ci+'" title="คำนวณอัตโนมัติ">—</td>';
+        } else {
+          tbody += '<td class="tbl-cell">'+_buildCellInput(ckey, col, fkey, ri, ci, showRowTotal, showColTotal, td)+'</td>';
+        }
+      });
+      if (showRowTotal) {
+        tbody += '<td class="tbl-cell-auto tbl-row-sum" id="tbl-rowsum-'+fkey+'-'+ri+'">—</td>';
+      }
+      tbody += '</tr>';
+    });
+    html += '<div style="overflow-x:auto;"><table class="qa-data-table qa-enhanced-table"><thead>'+thead+'</thead><tbody>'+tbody+'</tbody></table></div>';
+
+  } else {
+    // Dynamic rows mode
+    var firstRow = _buildDynRow(fkey, 0, td, showRowTotal, showColTotal);
+    html += '<button type="button" class="qa-btn-add-field mb-2" onclick="addEnhancedDynRow(\''+escHtml(fkey)+'\')"><i class="bi bi-plus-circle-fill me-1"></i>เพิ่มแถว</button>';
+    html += '<div style="overflow-x:auto;"><table class="qa-data-table qa-enhanced-table" id="tbl-'+fkey+'">';
+    html += '<thead>'+thead+'</thead>';
+    html += '<tbody id="tbl-body-'+fkey+'">'+firstRow+'</tbody>';
+    // Col total row (dynamic)
+    if (showColTotal) {
+      var totalRow = '<tr class="tbl-col-total-row" id="tbl-coltotal-'+fkey+'">';
+      if (td.fixedRows) totalRow += '<td class="tbl-row-header">รวม</td>';
+      else totalRow += '<td class="tbl-cell-auto" style="background:var(--primary-ul);font-weight:700;color:var(--primary);">รวม</td>';
+      td.cols.forEach(function(col, ci) {
+        totalRow += '<td class="tbl-cell-auto tbl-col-sum" id="tbl-colsum-'+fkey+'-'+ci+'" style="background:var(--primary-ul);color:var(--primary);font-weight:700;">—</td>';
+      });
+      if (showRowTotal) totalRow += '<td class="tbl-cell-auto" style="background:var(--primary-ul);color:var(--primary);font-weight:700;" id="tbl-grandtotal-'+fkey+'">—</td>';
+      totalRow += '</tr>';
+      html += '<tfoot>'+totalRow+'</tfoot>';
+    }
+    html += '</table></div>';
+    html += '<input type="hidden" name="'+fkey+'_total_rows" id="tbl-rows-'+fkey+'" value="1">';
+  }
+
+  // Hidden col meta for auto-sum reconstruction
+  html += '<input type="hidden" name="'+fkey+'_col_meta" value="'+escHtml(JSON.stringify(td.cols))+'">';
+  html += '<input type="hidden" name="'+fkey+'_table_def" value="'+escHtml(JSON.stringify(td))+'">';
+  html += '</div>';
+
+  return html;
+}
+
+function _buildCellInput(ckey, col, fkey, ri, ci, showRowTotal, showColTotal, td) {
+  var onInput = 'onTblInput(\''+escHtml(fkey)+'\')';
+  var st = "width:100%;";
+  if (col.type==="number") {
+    return '<input type="number" step="any" class="qa-input tbl-num-input" name="'+escHtml(ckey)+'" data-row="'+ri+'" data-col="'+ci+'" placeholder="0" oninput="'+onInput+'" style="'+st+'">';
+  }
+  if (col.type==="date") {
+    return '<input type="date" class="qa-input" name="'+escHtml(ckey)+'" style="'+st+'">';
+  }
+  if (col.type==="select") {
+    var opts = '<option value="">-- เลือก --</option>'
+      + (col.options||"").split(",").map(function(o){return '<option value="'+escHtml(o.trim())+'">'+escHtml(o.trim())+'</option>';}).join("");
+    return '<select class="qa-input" name="'+escHtml(ckey)+'" style="'+st+'">'+opts+'</select>';
+  }
+  return '<input type="text" class="qa-input" name="'+escHtml(ckey)+'" placeholder="กรอกข้อมูล..." style="'+st+'">';
+}
+
+function _buildDynRow(fkey, ri, td, showRowTotal, showColTotal) {
+  var row = '<tr data-row="'+ri+'">';
+  td.cols.forEach(function(col, ci) {
+    var ckey = fkey+"_r"+ri+"_c"+ci;
+    if (col.isTotal || col.type==="formula") {
+      row += '<td class="tbl-cell-auto" id="tbl-sum-'+fkey+'-r'+ri+'-c'+ci+'">—</td>';
+    } else {
+      row += '<td class="tbl-cell">'+_buildCellInput(ckey, col, fkey, ri, ci, showRowTotal, showColTotal, td)+'</td>';
+    }
+  });
+  if (showRowTotal) row += '<td class="tbl-cell-auto tbl-row-sum" id="tbl-rowsum-'+fkey+'-'+ri+'">—</td>';
+  row += '<td class="tbl-cell" style="width:36px;"><button type="button" class="qa-btn-danger btn-xs" onclick="this.closest(\'tr\').remove();onTblInput(\''+escHtml(fkey)+'\')"><i class="bi bi-trash"></i></button></td>';
+  row += '</tr>';
+  return row;
+}
+
+function addEnhancedDynRow(fkey) {
+  var tbody = document.getElementById("tbl-body-"+fkey); if (!tbody) return;
+  var rowsEl = document.getElementById("tbl-rows-"+fkey);
+  var ri = parseInt((rowsEl&&rowsEl.value)||"1");
+  // Get tableDef from hidden input
+  var metaEl = document.querySelector('[name="'+fkey+'_table_def"]');
+  var td = null; try { td=JSON.parse(metaEl?metaEl.value:"{}"); } catch(e) { td={cols:[]}; }
+  var hasNumCol = (td.cols||[]).some(function(c){return c.type==="number"||c.type==="formula";});
+  var showRowTotal = td.hasRowTotal && hasNumCol;
+  var showColTotal = td.hasColTotal && hasNumCol;
+  tbody.insertAdjacentHTML("beforeend", _buildDynRow(fkey, ri, td, showRowTotal, showColTotal));
+  if (rowsEl) rowsEl.value = ri + 1;
+  onTblInput(fkey);
+}
+
+// ── Auto-sum engine ──────────────────────────────────────────
+function onTblInput(fkey) {
+  var metaEl = document.querySelector('[name="'+fkey+'_table_def"]');
+  var td = null; try { td=JSON.parse(metaEl?metaEl.value:"{}"); } catch(e) { return; }
+  if (!td || !td.cols) return;
+  var hasNumCol = td.cols.some(function(c){return c.type==="number"||c.type==="formula";});
+  if (!hasNumCol) return;
+  var showRowTotal = td.hasRowTotal && hasNumCol;
+  var showColTotal = td.hasColTotal && hasNumCol;
+
+  // Get all rows (tbody or tr[data-row])
+  var tbody = document.getElementById("tbl-body-"+fkey);
+  var rows  = tbody ? tbody.querySelectorAll("tr") : document.querySelectorAll('#tbl-'+fkey+' tbody tr');
+
+  var colSums = {};  // ci -> total
+  var grandTotal = 0;
+
+  rows.forEach(function(tr) {
+    var ri = tr.dataset.row !== undefined ? parseInt(tr.dataset.row) : -1;
+    var rowSum = 0;
+    var rowHasNum = false;
+
+    td.cols.forEach(function(col, ci) {
+      if (!col.isTotal && col.type !== "formula") {
+        if (col.type === "number") {
+          var inp = tr.querySelector('[name="'+fkey+'_r'+ri+'_c'+ci+'"]');
+          var val = inp ? (parseFloat(inp.value)||0) : 0;
+          rowSum += val;
+          rowHasNum = true;
+          colSums[ci] = (colSums[ci]||0) + val;
+        }
+      }
+    });
+
+    if (showRowTotal && ri >= 0) {
+      var rsEl = document.getElementById("tbl-rowsum-"+fkey+"-"+ri);
+      if (rsEl) rsEl.innerText = rowHasNum ? _fmtNum(rowSum) : "—";
+      if (rowHasNum) grandTotal += rowSum;
+    }
+  });
+
+  // Col sums
+  if (showColTotal) {
+    td.cols.forEach(function(col, ci) {
+      var csEl = document.getElementById("tbl-colsum-"+fkey+"-"+ci);
+      if (csEl) csEl.innerText = (col.type==="number"||col.type==="formula") && colSums[ci]!==undefined ? _fmtNum(colSums[ci]) : "—";
+    });
+    var gtEl = document.getElementById("tbl-grandtotal-"+fkey);
+    if (gtEl) gtEl.innerText = _fmtNum(grandTotal);
+  }
+}
+
+function _fmtNum(n) {
+  if (isNaN(n)) return "—";
+  // Format: ถ้าเป็นทศนิยม แสดง 2 ตำแหน่ง, ถ้าจำนวนเต็ม ไม่แสดง .00
+  return n % 1 === 0 ? n.toLocaleString("th-TH") : n.toLocaleString("th-TH",{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+// ── Readonly table view (enhanced) ─────────────────────────
+function _renderEnhancedTableRO(field, dataObj) {
+  var td = field.tableDef;
+  // Fallback to old format (string columns)
+  if (!td || !td.cols || !td.cols.length) {
+    return _renderTableRO(field.label, field.key, field.columns||"", dataObj);
+  }
+  var fkey = field.key;
+  var hasNumCol = td.cols.some(function(c){return c.type==="number"||c.type==="formula";});
+  var showRowTotal = td.hasRowTotal && hasNumCol;
+  var showColTotal = td.hasColTotal && hasNumCol;
+
+  var html = '<div class="mb-3"><div class="qa-label">'+escHtml(field.label)+'</div>';
+  if (field.desc) html += '<div class="qa-field-hint"><i class="bi bi-info-circle me-1"></i>'+escHtml(field.desc)+'</div>';
+
+  // thead
+  var thead = '<tr style="background:#1e3a5f;">';
+  if (td.fixedRows) thead += '<th class="tbl-hd">'+escHtml(td.rowHeaderLabel||"")+'</th>';
+  td.cols.forEach(function(col) {
+    thead += '<th class="tbl-hd">'+escHtml(col.label||"?")+'</th>';
+  });
+  if (showRowTotal) thead += '<th class="tbl-hd tbl-total-col">รวม ∑</th>';
+  thead += '</tr>';
+
+  var colTotals = {};  // ci -> sum
+  var grandTotal = 0;
+  var tbody = "";
+
+  if (td.fixedRows && td.rows && td.rows.length) {
+    td.rows.forEach(function(row, ri) {
+      var rowSum = 0, rowHasNum = false;
+      var isTotal = row.isTotal;
+      tbody += '<tr class="'+(isTotal?"tbl-row-total":"")+'">';
+      tbody += '<td class="tbl-row-header">'+escHtml(row.label||"แถว "+(ri+1))+'</td>';
+      td.cols.forEach(function(col, ci) {
+        var ckey = fkey+"_r"+ri+"_c"+ci;
+        if (col.isTotal || isTotal || col.type==="formula") {
+          // Compute sum
+          var s = 0;
+          if (!isTotal) {
+            // col total: sum all rows for this ci
+            for (var rr=0; rr<td.rows.length; rr++) {
+              if (!td.rows[rr].isTotal) {
+                var ck2 = fkey+"_r"+rr+"_c"+ci;
+                s += parseFloat(dataObj[ck2])||0;
+              }
+            }
+          } else if (!col.isTotal && col.type!=="formula") {
+            // row total: sum all data cols for this ri
+            td.cols.forEach(function(c2, ci2) {
+              if (!c2.isTotal && c2.type!=="formula" && c2.type==="number") {
+                s += parseFloat(dataObj[fkey+"_r"+ri+"_c"+ci2])||0;
+              }
+            });
+          } else {
+            // grand total
+            for (var rr2=0; rr2<td.rows.length; rr2++) {
+              td.cols.forEach(function(c2, ci2) {
+                if (!td.rows[rr2].isTotal && !c2.isTotal && c2.type==="number") s += parseFloat(dataObj[fkey+"_r"+rr2+"_c"+ci2])||0;
+              });
+            }
+          }
+          tbody += '<td class="tbl-cell-auto">'+(s?_fmtNum(s):"—")+'</td>';
+        } else {
+          var val = dataObj[ckey]||"—";
+          if (col.type==="number") { var n=parseFloat(val); rowSum+=(isNaN(n)?0:n); rowHasNum=true; colTotals[ci]=(colTotals[ci]||0)+(isNaN(n)?0:n); }
+          tbody += '<td style="border:1px solid var(--border);padding:5px 9px;font-size:.82rem;">'+escHtml(String(val))+'</td>';
+        }
+      });
+      if (showRowTotal && !isTotal) {
+        tbody += '<td class="tbl-cell-auto tbl-row-sum">'+(rowHasNum?_fmtNum(rowSum):"—")+'</td>';
+        if (rowHasNum) grandTotal += rowSum;
+      } else if (showRowTotal) {
+        tbody += '<td class="tbl-cell-auto">'+_fmtNum(grandTotal)+'</td>';
+      }
+      tbody += '</tr>';
+    });
+  } else {
+    // Dynamic rows: reconstruct from dataObj
+    var rowsEl = dataObj[fkey+"_total_rows"];
+    var maxR = parseInt(rowsEl)||0;
+    if (!maxR) {
+      Object.keys(dataObj).forEach(function(k) {
+        var m = k.match(new RegExp("^"+fkey.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"_r(\\d+)_c\\d+$"));
+        if (m) maxR = Math.max(maxR, parseInt(m[1])+1);
+      });
+    }
+    for (var ri=0; ri<maxR; ri++) {
+      var rowSum=0, rowHasNum=false;
+      tbody += '<tr>';
+      td.cols.forEach(function(col, ci) {
+        var ckey = fkey+"_r"+ri+"_c"+ci;
+        var val = dataObj[ckey]||"";
+        if (col.type==="number"&&!col.isTotal) { var n=parseFloat(val); rowSum+=(isNaN(n)?0:n); rowHasNum=true; colTotals[ci]=(colTotals[ci]||0)+(isNaN(n)?0:n); }
+        if (col.isTotal||col.type==="formula") tbody += '<td class="tbl-cell-auto">—</td>';
+        else tbody += '<td style="border:1px solid var(--border);padding:5px 9px;font-size:.82rem;">'+escHtml(val||"—")+'</td>';
+      });
+      if (showRowTotal) { tbody += '<td class="tbl-cell-auto tbl-row-sum">'+(rowHasNum?_fmtNum(rowSum):"—")+'</td>'; if(rowHasNum) grandTotal+=rowSum; }
+      tbody += '</tr>';
+    }
+    if (!maxR) tbody = '<tr><td colspan="'+(td.cols.length+(showRowTotal?1:0)+(td.fixedRows?1:0))+'" style="text-align:center;color:var(--txt-muted);padding:12px;">ไม่มีข้อมูล</td></tr>';
+  }
+
+  // Col total footer
+  var tfoot = "";
+  if (showColTotal) {
+    tfoot = '<tfoot><tr class="tbl-col-total-row">';
+    if (td.fixedRows) tfoot += '<td class="tbl-row-header">รวม</td>';
+    else tfoot += '<td class="tbl-cell-auto" style="background:var(--primary-ul);color:var(--primary);font-weight:700;border:1px solid var(--border);padding:5px 9px;">รวม</td>';
+    td.cols.forEach(function(col, ci) {
+      var isNum = col.type==="number"||col.type==="formula";
+      tfoot += '<td class="tbl-cell-auto" style="background:var(--primary-ul);color:var(--primary);font-weight:700;">'+(isNum&&colTotals[ci]!==undefined?_fmtNum(colTotals[ci]):"—")+'</td>';
+    });
+    if (showRowTotal) tfoot += '<td class="tbl-cell-auto" style="background:var(--primary-ul);color:var(--primary);font-weight:700;">'+_fmtNum(grandTotal)+'</td>';
+    tfoot += '</tr></tfoot>';
+  }
+
+  html += '<div style="overflow-x:auto;">'
+    + '<table class="qa-data-table qa-enhanced-table"><thead>'+thead+'</thead><tbody>'+tbody+'</tbody>'+tfoot+'</table>'
+    + '</div></div>';
+  return html;
+}
+</script>
