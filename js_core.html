@@ -16,6 +16,7 @@ var APP = {
   sections:      [],
   departments:   [], // ✅ เพิ่มบรรทัดนี้
   forms:         [],
+  allUsersCache: null,
   theme:         {},
   visits:        {},
   activeRole:    (_savedUser && _savedUser.activeRole) || "",
@@ -344,9 +345,11 @@ function _setupAdminPanel() {
     buildDeptChips("mgr-dept-checkboxes", []);
   }*/
   
-  populateSettingsSectionsCheckboxes([]); 
-  populateExportYearSelect(); 
-  loadAllUsers(); 
+  populateSettingsSectionsCheckboxes([]);
+  populateExportYearSelect();
+  // แสดง user table ทันทีจาก cache (ถ้ามี) แล้วค่อย refresh ใน background
+  if (APP.allUsersCache && typeof renderUsersTable === 'function') renderUsersTable(APP.allUsersCache);
+  loadAllUsers();
   loadVisitStats();
   
   if (typeof initSearchableSelects === 'function') initSearchableSelects();
@@ -440,10 +443,11 @@ document.addEventListener("DOMContentLoaded", function() {
         APP.dashboard = res.dashboard || [];
         APP.sections  = res.sections  || [];
         APP.departments = res.departments || [];
-        APP.forms     = res.forms     || [];
-        APP.theme     = res.theme     || {};
-        APP.visits    = res.visits    || {};
-        APP.iqaMapping = res.iqaMapping || {}; // รับค่า Mapping จากตารางแยก
+        APP.forms       = res.forms       || [];
+        APP.theme       = res.theme       || {};
+        APP.visits      = res.visits      || {};
+        APP.iqaMapping  = res.iqaMapping  || {};
+        if (res.allUsers) APP.allUsersCache = res.allUsers; // cache user list จาก initial load
         APP._dataLoaded = true;
         // ลบส่วนที่เคยดึง iqaMapping ออกจาก APP.theme
         if (APP.theme && Object.keys(APP.theme).length) applyThemeData(APP.theme);
@@ -489,6 +493,7 @@ function refreshAllData(cb) {
         APP.departments = res.departments || []; // ✅ รับข้อมูล Department เข้ามาเก็บไว้
         APP.forms       = res.forms       || [];
         APP.visits      = res.visits      || {};
+        if (res.allUsers) APP.allUsersCache = res.allUsers;
         APP._dataLoaded = true;
         if (res.theme && Object.keys(res.theme||{}).length) {
           APP.theme = res.theme;

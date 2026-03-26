@@ -282,6 +282,7 @@ function verifyGoogleWorkspaceIdentity() {
 // ─────────────────────────────────────────
 function registerUser(formData) {
   try {
+    _clearAppCache();
     const email = formData.email.trim();
     if (!email.endsWith("@butc.ac.th")) return { success: false, message: "อนุญาตเฉพาะ @butc.ac.th เท่านั้น" };
 
@@ -866,6 +867,7 @@ function saveManager(managerData) {
 // เปลี่ยนจาก saveManager เป็น savePersonnel ให้รองรับการบันทึกได้ทั้ง User และ Manager
 function savePersonnel(data) {
   try {
+    _clearAppCache();
     const adminEmail = Session.getActiveUser().getEmail();
     const email = data.email.trim();
     if (!email.endsWith("@butc.ac.th")) return { success: false, message: "อนุญาตเฉพาะ @butc.ac.th เท่านั้น" };
@@ -896,6 +898,7 @@ function savePersonnel(data) {
 
 function deleteUser(userType, email) {
   try {
+    _clearAppCache();
     const adminEmail = Session.getActiveUser().getEmail();
     const sheetMap   = { admin: "tb_admins", manager: "tb_managers", user: "tb_users" };
     const sheet = ensureSheetExists(sheetMap[userType]);
@@ -1326,7 +1329,8 @@ function loadInitialData() {
         departments: getAllDepartments().data    || [],
         forms:       getAllForms().data          || [],
         theme:       getThemeSettings().data     || {},
-        iqaMapping:  getIqaMappingData().data    || {}
+        iqaMapping:  getIqaMappingData().data    || {},
+        allUsers:    getAllUsers().data          || { admins: [], managers: [], users: [] }
       };
       _putCache('app_static_data', staticData, 300); // cache 5 min
     }
@@ -1339,6 +1343,7 @@ function loadInitialData() {
       forms:       staticData.forms,
       theme:       staticData.theme,
       iqaMapping:  staticData.iqaMapping,
+      allUsers:    staticData.allUsers,
       dashboard:   dashboard.data || [],
       visits:      visits
     };
@@ -1354,6 +1359,7 @@ function loadInitialData() {
       theme:       {},
       visits:      { total: 0, uniqueUsers: 0, today: 0 },
       iqaMapping:  {},
+      allUsers:    { admins: [], managers: [], users: [] },
       dashboard:   []
     };
   }

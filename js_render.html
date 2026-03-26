@@ -684,9 +684,13 @@ function switchAdminTab(tabId){
   document.querySelectorAll(".qa-tab-link").forEach(function(el){el.classList.remove("active");});
   var t=document.getElementById(tabId); if(t) t.classList.add("active");
   var a=document.querySelector('[data-tab="'+tabId+'"]'); if(a) a.classList.add("active");
-  if(tabId==="tab-theme") initThemeEditor();
-  if(tabId==="tab-stats") loadVisitStats();
-  if(tabId==="tab-iqa")   initIqaTab();
+  // Lazy render: โหลดข้อมูลเมื่อสลับ tab เพื่อให้แน่ใจว่าแสดงข้อมูลล่าสุดเสมอ
+  if(tabId==="tab-forms")    { if(typeof renderFormList==="function") renderFormList(); }
+  if(tabId==="tab-users")    { if(typeof loadAllUsers==="function") loadAllUsers(); }
+  if(tabId==="tab-settings") { if(typeof renderSettingsYearList==="function") renderSettingsYearList(); }
+  if(tabId==="tab-theme")    initThemeEditor();
+  if(tabId==="tab-stats")    loadVisitStats();
+  if(tabId==="tab-iqa")      initIqaTab();
 }
 
 function _formatMoneyRO(val) {

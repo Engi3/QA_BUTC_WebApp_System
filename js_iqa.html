@@ -455,8 +455,8 @@ function renderIqaPublicView() {
     + '<button class="qa-btn-ghost btn-sm" id="iqa-pub-p2-btn" onclick="iqaPubSelectPhase(2)">'
     + '<i class="bi bi-2-circle-fill me-1"></i>Phase 2 ประเมินคุณภาพ</button>'
     + '</div>'
-    + '<div id="iqa-pub-phase1">'+ _buildIqaPubAccordions(pagesP1, year) +'</div>'
-    + '<div id="iqa-pub-phase2" style="display:none;">'+ _buildIqaPubAccordions(pagesP2, year) +'</div>';
+    + '<div id="iqa-pub-phase1">'+ _buildIqaPubAccordions(pagesP1, year, "p1") +'</div>'
+    + '<div id="iqa-pub-phase2" style="display:none;">'+ _buildIqaPubAccordions(pagesP2, year, "p2") +'</div>';
 
   container.innerHTML = html;
 }
@@ -472,8 +472,9 @@ function iqaPubSelectPhase(n) {
   if (b2) b2.className = n === 2 ? "qa-btn-primary btn-sm" : "qa-btn-ghost btn-sm";
 }
 
-function _buildIqaPubAccordions(pages, year) {
+function _buildIqaPubAccordions(pages, year, prefix) {
   if (!pages.length) return '<div class="qa-alert qa-alert-info"><i class="bi bi-info-circle-fill"></i><span>ไม่มีข้อมูล</span></div>';
+  var pfx = prefix ? prefix + "-" : "";
   return pages.map(function(page, pi) {
     var mapping    = APP.iqaMapping[page.id] || {};
     var mappedCount = 0;
@@ -545,7 +546,7 @@ function _buildIqaPubAccordions(pages, year) {
           + '<i class="bi bi-bar-chart-fill me-1"></i>'+dataCount+'/'+mappedCount+' ('+pctFill+'%)</span>'
       : '<span style="background:var(--surface-3);color:var(--txt-muted);padding:2px 9px;border-radius:20px;font-size:.67rem;flex-shrink:0;">ยังไม่ Mapped</span>';
 
-    var bodyId = "iqa-pub-body-"+pi;
+    var bodyId = "iqa-pub-body-"+pfx+pi;
     return '<div class="qa-iqa-pub-card">'
       + '<div class="qa-iqa-pub-head" onclick="iqaPubToggle(\''+bodyId+'\')" >'
       + '<i class="bi bi-chevron-right" id="arr-'+bodyId+'" style="transition:.2s;color:var(--txt-muted);flex-shrink:0;font-size:.8rem;"></i>'

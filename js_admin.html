@@ -462,9 +462,23 @@ function saveEditUserSections() {
 
 // ── Users ─────────────────────────────────────────────────────
 function loadAllUsers() {
+  // แสดงจาก cache ทันทีถ้ามี เพื่อลด lag
+  if (APP.allUsersCache) renderUsersTable(APP.allUsersCache);
+  else {
+    var c = document.getElementById("users-table-area");
+    if (c && !c.innerHTML) c.innerHTML = '<div class="text-center py-4"><div class="qa-spinner"></div></div>';
+  }
+  // ดึงข้อมูลใหม่จาก server เสมอเพื่อให้ข้อมูล up-to-date
   google.script.run
-    .withSuccessHandler(function(res) { if (res&&res.success) renderUsersTable(res.data); else showToast((res&&res.message)||"โหลดไม่สำเร็จ","danger"); })
-    .withFailureHandler(function(err) { showToast(err.message||err,"danger"); })
+    .withSuccessHandler(function(res) {
+      if (res && res.success) {
+        APP.allUsersCache = res.data;
+        renderUsersTable(res.data);
+      } else {
+        showToast((res && res.message) || "โหลดไม่สำเร็จ", "danger");
+      }
+    })
+    .withFailureHandler(function(err) { showToast(err.message || err, "danger"); })
     .getAllUsers();
 }
 
