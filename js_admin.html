@@ -491,7 +491,66 @@ function openDeleteConfirm(type, id, name) {
   document.getElementById("del-target-id").innerText   = id;
   document.getElementById("del-confirm-email").value   = "";
   var err = document.getElementById("del-email-error"); if (err) err.style.display = "none";
+
+  // ✅ รีเซ็ต Modal กลับเป็น Default Mode (ลบ) ทุกครั้งที่เปิดจากทางนี้
+  _setConfirmModalMode("delete");
   new bootstrap.Modal(document.getElementById("modal-delete-confirm")).show();
+}
+
+/**
+ * ✅ เปิด Confirm Modal สำหรับ Action ที่ไม่ใช่การลบ (เช่น เปลี่ยนชื่อ)
+ * ใช้ Modal เดิม แต่ปรับ Title / Alert Text / Button Text ให้เหมาะสม
+ * @param {string} type     - ประเภท Action เช่น "report-form-rename"
+ * @param {string} id       - ID ของ Target
+ * @param {string} name     - ชื่อที่แสดงใน Modal (หรือ ค่าที่ต้องการส่งไป Backend)
+ * @param {string} modalTitle - ข้อความหัว Modal
+ * @param {string} alertText  - ข้อความแจ้งเตือนใน Modal
+ * @param {string} btnText    - ข้อความบนปุ่มยืนยัน
+ */
+function openConfirmAction(type, id, name, modalTitle, alertText, btnText) {
+  APP.pendingDelete = {type:type, id:id, name:name};
+  document.getElementById("del-target-name").innerText = name;
+  document.getElementById("del-target-id").innerText   = id;
+  document.getElementById("del-confirm-email").value   = "";
+  var err = document.getElementById("del-email-error"); if (err) err.style.display = "none";
+
+  // ปรับ Modal ให้แสดงข้อความตาม Action ที่กำลังทำ
+  _setConfirmModalMode("action", modalTitle, alertText, btnText);
+  new bootstrap.Modal(document.getElementById("modal-delete-confirm")).show();
+}
+
+/**
+ * ✅ Helper: ปรับ UI ของ Confirm Modal ระหว่าง "delete" กับ "action" mode
+ */
+function _setConfirmModalMode(mode, title, alertText, btnText) {
+  var iconEl  = document.getElementById("del-modal-icon");
+  var titleEl = document.getElementById("del-modal-title");
+  var alertEl = document.getElementById("del-modal-alert");
+  var alertTx = document.getElementById("del-modal-alert-text");
+  var btnTx   = document.getElementById("del-modal-btn-text");
+  var btn     = document.getElementById("btn-confirm-delete");
+
+  if (mode === "delete") {
+    // โหมดลบ: สีแดง ไอคอนถัง
+    if (iconEl)  iconEl.innerHTML  = '<i class="bi bi-trash-fill"></i>';
+    if (iconEl)  iconEl.className  = "qa-modal-icon danger mx-auto";
+    if (titleEl) titleEl.style.color = "var(--danger, #dc3545)";
+    if (titleEl) titleEl.innerText   = "ยืนยันการลบ";
+    if (alertEl) alertEl.className   = "qa-alert qa-alert-danger mb-3";
+    if (alertTx) alertTx.innerText   = "การลบไม่สามารถกู้คืนได้ — พิมพ์อีเมล Admin เพื่อยืนยัน";
+    if (btnTx)   btnTx.innerText     = "ยืนยันลบ";
+    if (btn)     btn.className       = "qa-btn-danger flex-fill";
+  } else {
+    // โหมด Action อื่น: สีน้ำเงิน ไอคอนดินสอ
+    if (iconEl)  iconEl.innerHTML  = '<i class="bi bi-pencil-fill"></i>';
+    if (iconEl)  iconEl.className  = "qa-modal-icon primary mx-auto";
+    if (titleEl) titleEl.style.color = "var(--primary, #2563eb)";
+    if (titleEl) titleEl.innerText   = title   || "ยืนยันการดำเนินการ";
+    if (alertEl) alertEl.className   = "qa-alert qa-alert-info mb-3";
+    if (alertTx) alertTx.innerText   = alertText || "พิมพ์อีเมล Admin ของคุณเพื่อยืนยัน";
+    if (btnTx)   btnTx.innerText     = btnText   || "ยืนยัน";
+    if (btn)     btn.className       = "qa-btn-primary flex-fill";
+  }
 }
 
 function executeDelete() {
@@ -540,7 +599,526 @@ function executeDelete() {
       showToast('ลบ Page "'+name+'" แล้ว',"success");
     }
     reset();
+
+  // ──────────────────────────────────────────────────────────────
+  // ✅ ประเภทใหม่: ลบแบบฟอร์มรายงาน (Report Form Delete)
+  // ──────────────────────────────────────────────────────────────
+  } else if (type==="report-form") {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        reset();
+        if (res && res.success) {
+          showToast('ลบ "'+name+'" สำเร็จ', "success");
+          // อัปเดต State และ Render ใหม่ทั้ง Admin และ Public
+          refreshAllData(function() {
+            renderReportFormAdminSection();
+            renderReportFormsPublic();
+          });
+        } else {
+          showToast((res && res.message) || "ลบไม่สำเร็จ", "danger");
+        }
+      })
+      .withFailureHandler(function(err) {
+        reset();
+        showToast(err.message || err, "danger");
+      })
+      .deleteReportForm(id); // id = fileId ใน Drive
+
+  // ──────────────────────────────────────────────────────────────
+  // ✅ ประเภทใหม่: เปลี่ยนชื่อแบบฟอร์มรายงาน (Report Form Rename)
+  // id = fileId, name = ชื่อใหม่ที่ต้องการบันทึก
+  // ──────────────────────────────────────────────────────────────
+  } else if (type==="report-form-rename") {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        reset();
+        if (res && res.success) {
+          showToast("เปลี่ยนชื่อสำเร็จ", "success");
+          refreshAllData(function() {
+            renderReportFormAdminSection();
+            renderReportFormsPublic();
+          });
+        } else {
+          showToast((res && res.message) || "เปลี่ยนชื่อไม่สำเร็จ", "danger");
+        }
+      })
+      .withFailureHandler(function(err) {
+        reset();
+        showToast(err.message || err, "danger");
+      })
+      .renameReportForm(id, name); // id = fileId, name = ชื่อใหม่
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ✅ REPORT FORM ADMIN MANAGEMENT
+// จัดการแบบฟอร์มรายงานฝั่ง Admin: Upload / Group / Order / Rename / Delete
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * แสดงส่วนจัดการแบบฟอร์มรายงานฝั่ง Admin
+ * ประกอบด้วย:
+ * 1. Panel จัดการกลุ่ม (เพิ่ม/เรียง/ลบกลุ่ม)
+ * 2. ตารางไฟล์ทั้งหมด พร้อม dropdown เลือกกลุ่ม และปุ่มเรียงลำดับ
+ */
+function renderReportFormAdminSection() {
+  var el = document.getElementById("report-form-admin-list");
+  if (!el) return;
+
+  var forms  = APP.reportForms      || [];
+  var groups = APP.reportFormGroups || [];
+  var order  = APP.reportFormOrder  || {};
+
+  // สร้าง lookup: fileId → file object
+  var fileMap = {};
+  forms.forEach(function(f) { fileMap[f.fileId] = f; });
+
+  // สร้าง lookup: fileId → groupName ปัจจุบัน
+  var fileGroupMap = {};
+  Object.keys(order).forEach(function(gKey) {
+    (order[gKey] || []).forEach(function(fid) { fileGroupMap[fid] = gKey; });
+  });
+  // ไฟล์ที่ไม่อยู่ใน order ใดเลย → ถือว่า ungrouped
+  forms.forEach(function(f) {
+    if (fileGroupMap[f.fileId] === undefined) fileGroupMap[f.fileId] = "";
+  });
+
+  // ── Panel จัดการกลุ่ม ────────────────────────────────────
+  var groupPanelHtml = '<div style="background:var(--glass-bg);border:1.5px solid var(--border-2);border-radius:12px;padding:16px 20px;" class="mb-4">'
+    + '<div class="d-flex align-items-center gap-2 mb-3">'
+      + '<i class="bi bi-collection-fill" style="color:var(--primary);font-size:1.1rem;"></i>'
+      + '<h6 style="margin:0;font-weight:700;font-size:.9rem;">จัดการกลุ่ม</h6>'
+      + '<span style="background:var(--primary);color:white;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:20px;">' + groups.length + ' กลุ่ม</span>'
+    + '</div>'
+    // แถวเพิ่มกลุ่มใหม่
+    + '<div class="d-flex gap-2 mb-3">'
+      + '<input type="text" class="qa-input" id="rf-new-group-name" placeholder="ชื่อกลุ่มใหม่ เช่น งานบุคลากร" style="flex:1;font-size:.88rem;">'
+      + '<button class="qa-btn-primary" onclick="_rfAddGroup()" style="white-space:nowrap;font-size:.85rem;"><i class="bi bi-plus-lg me-1"></i>เพิ่มกลุ่ม</button>'
+    + '</div>';
+
+  if (!groups.length) {
+    groupPanelHtml += '<div class="qa-alert qa-alert-info" style="margin:0;"><i class="bi bi-info-circle-fill"></i><span>ยังไม่มีกลุ่ม — ไฟล์ทั้งหมดจะแสดงเป็นรายการเดียวกัน</span></div>';
+  } else {
+    // ตารางรายชื่อกลุ่ม
+    var gRows = "";
+    groups.forEach(function(gName, idx) {
+      var cnt = (order[gName] || []).filter(function(id) { return !!fileMap[id]; }).length;
+      gRows += '<tr>'
+        + '<td style="font-size:.8rem;color:var(--txt-muted);text-align:center;width:28px;">' + (idx + 1) + '</td>'
+        + '<td><span style="font-weight:700;font-size:.88rem;">' + escHtml(gName) + '</span></td>'
+        + '<td style="text-align:center;"><span class="badge" style="background:rgba(37,99,235,.15);color:#2563eb;font-size:.78rem;">' + cnt + ' ไฟล์</span></td>'
+        + '<td style="text-align:center;white-space:nowrap;">'
+          + '<button class="qa-btn-ghost btn-sm" data-rf-group="' + escHtml(gName) + '" data-rf-dir="up" onclick="_rfMoveGroup(this)" title="เลื่อนขึ้น"' + (idx === 0 ? ' disabled' : '') + '><i class="bi bi-arrow-up"></i></button>'
+          + '<button class="qa-btn-ghost btn-sm ms-1" data-rf-group="' + escHtml(gName) + '" data-rf-dir="down" onclick="_rfMoveGroup(this)" title="เลื่อนลง"' + (idx === groups.length - 1 ? ' disabled' : '') + '><i class="bi bi-arrow-down"></i></button>'
+        + '</td>'
+        + '<td style="text-align:center;">'
+          + '<button class="qa-btn-ghost btn-sm text-danger" data-rf-group="' + escHtml(gName) + '" onclick="_rfDeleteGroup(this)" title="ลบกลุ่ม (ย้ายไฟล์ไปไม่จัดกลุ่ม)"><i class="bi bi-x-lg"></i></button>'
+        + '</td>'
+        + '</tr>';
+    });
+    groupPanelHtml += '<div class="table-responsive"><table class="qa-table" style="margin:0;">'
+      + '<thead><tr>'
+        + '<th style="width:28px;">#</th><th>ชื่อกลุ่ม</th><th style="text-align:center;">จำนวนไฟล์</th>'
+        + '<th style="text-align:center;">ลำดับ</th><th style="text-align:center;">ลบ</th>'
+      + '</tr></thead>'
+      + '<tbody>' + gRows + '</tbody></table></div>';
+  }
+  groupPanelHtml += '</div>';
+
+  // ── กรณีไม่มีไฟล์ ─────────────────────────────────────────
+  if (!forms.length) {
+    el.innerHTML = groupPanelHtml
+      + '<div class="qa-alert qa-alert-info"><i class="bi bi-info-circle-fill"></i><span>ยังไม่มีแบบฟอร์มรายงาน — เริ่มต้นโดยอัปโหลดไฟล์ด้านบน</span></div>';
+    return;
+  }
+
+  // ── เรียงไฟล์ตาม order ────────────────────────────────────
+  // วนกลุ่มตามลำดับ → ตามด้วย ungrouped (key="") → ตามด้วยไฟล์ที่ไม่อยู่ใน order เลย
+  var orderedFileIds = [];
+  var groupOfFile    = {};  // fileId → groupName ที่ใช้ render ปุ่ม ↑↓
+
+  groups.forEach(function(gName) {
+    (order[gName] || []).forEach(function(fid) {
+      if (fileMap[fid] && groupOfFile[fid] === undefined) {
+        orderedFileIds.push(fid);
+        groupOfFile[fid] = gName;
+      }
+    });
+  });
+  (order[""] || []).forEach(function(fid) {
+    if (fileMap[fid] && groupOfFile[fid] === undefined) {
+      orderedFileIds.push(fid);
+      groupOfFile[fid] = "";
+    }
+  });
+  forms.forEach(function(f) {
+    if (groupOfFile[f.fileId] === undefined) {
+      orderedFileIds.push(f.fileId);
+      groupOfFile[f.fileId] = "";
+    }
+  });
+
+  // ── สร้าง HTML ตารางไฟล์ ──────────────────────────────────
+  // group options สำหรับ dropdown (เหมือนกันทุกแถว)
+  var baseGroupOpts = '<option value="">-- ไม่จัดกลุ่ม --</option>'
+    + groups.map(function(g) {
+        return '<option value="' + escHtml(g) + '">' + escHtml(g) + '</option>';
+      }).join('');
+
+  var rows = "";
+  orderedFileIds.forEach(function(fid) {
+    var f = fileMap[fid];
+    if (!f) return;
+    var ext      = f.fileName ? f.fileName.split(".").pop().toUpperCase() : "DOC";
+    var curGroup = groupOfFile[fid] !== undefined ? groupOfFile[fid] : "";
+    var groupArr = order[curGroup] || [];
+    var posInGroup = groupArr.indexOf(fid);
+    var isFirst  = posInGroup <= 0;
+    var isLast   = posInGroup < 0 || posInGroup >= groupArr.length - 1;
+
+    // สร้าง options โดยทำ selected ให้ถูกต้อง
+    var selOpts = baseGroupOpts.replace(
+      'value="' + escHtml(curGroup) + '"',
+      'value="' + escHtml(curGroup) + '" selected'
+    );
+
+    rows += '<tr>'
+      + '<td>'
+          + '<div style="display:flex;align-items:center;gap:10px;">'
+            + '<i class="bi bi-file-earmark-word-fill" style="font-size:1.4rem;color:#2563eb;flex-shrink:0;"></i>'
+            + '<div>'
+              + '<div style="font-weight:700;font-size:.88rem;">' + escHtml(f.docName) + '</div>'
+              + '<div style="font-size:.75rem;color:var(--txt-muted);">' + escHtml(f.fileName) + '</div>'
+            + '</div>'
+          + '</div>'
+      + '</td>'
+      + '<td style="text-align:center;">'
+          + '<span style="background:rgba(37,99,235,.1);color:#2563eb;font-size:.73rem;font-weight:700;padding:3px 10px;border-radius:20px;">' + escHtml(ext) + '</span>'
+      + '</td>'
+      // Dropdown เลือกกลุ่ม
+      + '<td style="min-width:160px;">'
+          + '<select class="qa-input" style="font-size:.82rem;padding:4px 8px;" data-rf-file-id="' + escHtml(f.fileId) + '" onchange="_rfGroupChange(this)">'
+          + selOpts
+          + '</select>'
+      + '</td>'
+      // ปุ่มเรียงลำดับภายในกลุ่ม
+      + '<td style="text-align:center;white-space:nowrap;">'
+          + '<button class="qa-btn-ghost btn-sm" data-rf-file-id="' + escHtml(f.fileId) + '" data-rf-group="' + escHtml(curGroup) + '" data-rf-dir="up" onclick="_rfMoveFile(this)" title="เลื่อนขึ้น"' + (isFirst ? ' disabled' : '') + '><i class="bi bi-arrow-up"></i></button>'
+          + '<button class="qa-btn-ghost btn-sm ms-1" data-rf-file-id="' + escHtml(f.fileId) + '" data-rf-group="' + escHtml(curGroup) + '" data-rf-dir="down" onclick="_rfMoveFile(this)" title="เลื่อนลง"' + (isLast ? ' disabled' : '') + '><i class="bi bi-arrow-down"></i></button>'
+      + '</td>'
+      // ปุ่มแก้ไข / ลบ
+      + '<td style="text-align:center;white-space:nowrap;">'
+          + '<button class="qa-btn-ghost btn-sm me-1" data-rf-id="' + escHtml(f.fileId) + '" data-rf-name="' + escHtml(f.docName) + '" onclick="_openRenameReportForm(this)" title="แก้ไขชื่อ"><i class="bi bi-pencil-fill"></i></button>'
+          + '<button class="qa-btn-ghost btn-sm text-danger" data-del-type="report-form" data-del-id="' + escHtml(f.fileId) + '" data-del-name="' + escHtml(f.docName) + '" onclick="_delBtn(this)" title="ลบ"><i class="bi bi-trash-fill"></i></button>'
+      + '</td>'
+      + '</tr>';
+  });
+
+  el.innerHTML = groupPanelHtml
+    + '<div class="table-responsive">'
+    + '<table class="qa-table" style="margin:0;">'
+      + '<thead><tr>'
+        + '<th>ชื่อเอกสาร</th>'
+        + '<th style="text-align:center;">ประเภท</th>'
+        + '<th style="min-width:160px;">กลุ่ม</th>'
+        + '<th style="text-align:center;">ลำดับในกลุ่ม</th>'
+        + '<th style="text-align:center;">จัดการ</th>'
+      + '</tr></thead>'
+      + '<tbody>' + rows + '</tbody>'
+    + '</table>'
+    + '</div>';
+}
+
+// ── Group Management Helpers ─────────────────────────────────
+
+/**
+ * เพิ่มกลุ่มใหม่: อ่านค่า Input → validate → optimistic save
+ */
+function _rfAddGroup() {
+  var inp  = document.getElementById("rf-new-group-name");
+  if (!inp) return;
+  var name = (inp.value || "").trim();
+  if (!name) { showToast("กรุณาระบุชื่อกลุ่ม", "warning"); return; }
+
+  var groups = (APP.reportFormGroups || []).slice();
+  var order  = JSON.parse(JSON.stringify(APP.reportFormOrder || {}));
+
+  if (groups.indexOf(name) >= 0) { showToast('มีกลุ่ม "' + name + '" อยู่แล้ว', "warning"); return; }
+  groups.push(name);
+  if (!Array.isArray(order[name])) order[name] = [];
+
+  inp.value = "";
+  _saveRfConfig(groups, order, function() {
+    showToast('เพิ่มกลุ่ม "' + name + '" สำเร็จ', "success");
+  });
+}
+
+/**
+ * ลบกลุ่ม: ย้ายไฟล์ในกลุ่มไปอยู่ใน "ไม่จัดกลุ่ม" แล้วลบกลุ่มออก
+ */
+function _rfDeleteGroup(btn) {
+  var gName  = btn.getAttribute("data-rf-group");
+  var groups = (APP.reportFormGroups || []).slice();
+  var order  = JSON.parse(JSON.stringify(APP.reportFormOrder || {}));
+
+  // ย้ายไฟล์จากกลุ่มที่ลบไปอยู่ใน ungrouped
+  var filesInGroup = order[gName] || [];
+  if (!Array.isArray(order[""])) order[""] = [];
+  order[""] = order[""].concat(filesInGroup);
+
+  // ลบกลุ่มออกจาก array และ order object
+  groups = groups.filter(function(g) { return g !== gName; });
+  delete order[gName];
+
+  _saveRfConfig(groups, order, function() {
+    showToast('ลบกลุ่ม "' + gName + '" สำเร็จ (ไฟล์ย้ายไปไม่จัดกลุ่ม)', "success");
+  });
+}
+
+/**
+ * เลื่อนกลุ่มขึ้น/ลงในลำดับ (swap adjacent)
+ */
+function _rfMoveGroup(btn) {
+  var gName  = btn.getAttribute("data-rf-group");
+  var dir    = btn.getAttribute("data-rf-dir"); // "up" หรือ "down"
+  var groups = (APP.reportFormGroups || []).slice();
+  var order  = JSON.parse(JSON.stringify(APP.reportFormOrder || {}));
+
+  var idx     = groups.indexOf(gName);
+  if (idx < 0) return;
+  var swapIdx = dir === "up" ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= groups.length) return;
+
+  // swap positions ใน groups array
+  var tmp = groups[idx]; groups[idx] = groups[swapIdx]; groups[swapIdx] = tmp;
+  _saveRfConfig(groups, order);
+}
+
+/**
+ * เปลี่ยนกลุ่มของไฟล์ (เมื่อ Admin เปลี่ยน dropdown)
+ */
+function _rfGroupChange(sel) {
+  var fileId   = sel.getAttribute("data-rf-file-id");
+  var newGroup = sel.value; // "" = ungrouped
+  var groups   = (APP.reportFormGroups || []).slice();
+  var order    = JSON.parse(JSON.stringify(APP.reportFormOrder || {}));
+
+  // ลบ fileId ออกจากทุกกลุ่ม (ป้องกันซ้ำ)
+  Object.keys(order).forEach(function(gKey) {
+    if (Array.isArray(order[gKey])) {
+      order[gKey] = order[gKey].filter(function(id) { return id !== fileId; });
+    }
+  });
+
+  // เพิ่มเข้ากลุ่มใหม่ที่ท้ายสุด
+  if (!Array.isArray(order[newGroup])) order[newGroup] = [];
+  order[newGroup].push(fileId);
+
+  _saveRfConfig(groups, order);
+}
+
+/**
+ * เลื่อนไฟล์ขึ้น/ลงภายในกลุ่มเดิม (swap adjacent ใน order array)
+ */
+function _rfMoveFile(btn) {
+  var fileId = btn.getAttribute("data-rf-file-id");
+  var gName  = btn.getAttribute("data-rf-group"); // "" = ungrouped
+  var dir    = btn.getAttribute("data-rf-dir");   // "up" หรือ "down"
+  var groups = (APP.reportFormGroups || []).slice();
+  var order  = JSON.parse(JSON.stringify(APP.reportFormOrder || {}));
+
+  var arr = order[gName] || [];
+  var idx = arr.indexOf(fileId);
+  if (idx < 0) return;
+  var swapIdx = dir === "up" ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= arr.length) return;
+
+  // swap positions ใน array
+  var tmp = arr[idx]; arr[idx] = arr[swapIdx]; arr[swapIdx] = tmp;
+  order[gName] = arr;
+
+  _saveRfConfig(groups, order);
+}
+
+/**
+ * บันทึก Config กลุ่มแบบ Optimistic Update + Rollback on failure
+ * อัปเดต APP State ทันที → Re-render → ส่ง Backend → rollback ถ้าล้มเหลว
+ */
+function _saveRfConfig(groups, order, cb) {
+  // Snapshot เก่าไว้สำหรับ rollback
+  var oldGroups = (APP.reportFormGroups || []).slice();
+  var oldOrder  = JSON.parse(JSON.stringify(APP.reportFormOrder || {}));
+
+  // Optimistic update: อัปเดต State ทันที + Re-render
+  APP.reportFormGroups = groups;
+  APP.reportFormOrder  = order;
+  renderReportFormAdminSection();
+
+  // บันทึก Backend ผ่าน google.script.run
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.success) {
+        if (typeof cb === "function") cb();
+      } else {
+        // Rollback: กลับค่าเดิม + Re-render
+        APP.reportFormGroups = oldGroups;
+        APP.reportFormOrder  = oldOrder;
+        renderReportFormAdminSection();
+        showToast("บันทึกไม่สำเร็จ: " + (res.message || "เกิดข้อผิดพลาด"), "danger");
+      }
+    })
+    .withFailureHandler(function(err) {
+      // Rollback
+      APP.reportFormGroups = oldGroups;
+      APP.reportFormOrder  = oldOrder;
+      renderReportFormAdminSection();
+      showToast("บันทึกไม่สำเร็จ: " + (err.message || err), "danger");
+    })
+    .saveReportFormGroupsConfig(groups, order);
+}
+
+/**
+ * เปิด Modal แก้ไขชื่อเอกสาร (ถูกเรียกจากปุ่ม Edit ในตาราง)
+ * Pre-fill ชื่อเดิม แล้ว User กรอกชื่อใหม่ → กด "บันทึก" → Email Confirm
+ */
+function _openRenameReportForm(btn) {
+  var fileId  = btn.getAttribute("data-rf-id");
+  var docName = btn.getAttribute("data-rf-name");
+  document.getElementById("edit-report-form-fileid").value  = fileId;
+  document.getElementById("edit-report-form-docname").value = docName;
+  new bootstrap.Modal(document.getElementById("modal-edit-report-form")).show();
+}
+
+/**
+ * ถูกเรียกเมื่อ Admin กดปุ่ม "บันทึก" ใน Edit Modal
+ * 1. ปิด Edit Modal
+ * 2. เก็บข้อมูลการเปลี่ยนชื่อไว้ใน pendingDelete
+ * 3. เปิด Confirm Modal (ต้องพิมพ์อีเมล Admin)
+ */
+function confirmEditReportForm() {
+  var fileId      = (document.getElementById("edit-report-form-fileid").value  || "").trim();
+  var newDocName  = (document.getElementById("edit-report-form-docname").value || "").trim();
+
+  if (!fileId)     { showToast("ไม่พบ ID ของแบบฟอร์ม", "warning"); return; }
+  if (!newDocName) { showToast("กรุณาระบุชื่อเอกสาร", "warning");  return; }
+
+  // ปิด Edit Modal ก่อน แล้วค่อยเปิด Confirm Modal
+  var editModal = bootstrap.Modal.getInstance(document.getElementById("modal-edit-report-form"));
+  if (editModal) editModal.hide();
+
+  // เปิด Confirm Modal พร้อมปรับข้อความให้เหมาะกับการเปลี่ยนชื่อ
+  setTimeout(function() {
+    openConfirmAction(
+      "report-form-rename",      // type ที่ executeDelete() จะรองรับ
+      fileId,                    // id = fileId
+      newDocName,                // name = ชื่อใหม่ (ส่งไป Backend)
+      "ยืนยันการเปลี่ยนชื่อ",    // Modal Title
+      "พิมพ์อีเมล Admin เพื่อยืนยันการเปลี่ยนชื่อเอกสาร",  // Alert Text
+      "ยืนยันเปลี่ยนชื่อ"         // Button Text
+    );
+  }, 300); // หน่วงเล็กน้อยเพื่อให้ Bootstrap Modal ปิดสมบูรณ์ก่อน
+}
+
+/**
+ * จัดการการอัปโหลดแบบฟอร์มรายงานใหม่
+ * อ่านไฟล์เป็น Base64 → ส่งไป Backend → อัปเดต State + Render ใหม่
+ */
+function handleReportFormUpload() {
+  var docName  = (document.getElementById("report-form-doc-name").value  || "").trim();
+  var fileInput = document.getElementById("report-form-file-input");
+  var msgEl    = document.getElementById("report-form-upload-msg");
+  var btn      = document.getElementById("btn-upload-report-form");
+
+  // Validation
+  if (!docName)  { showToast("กรุณาระบุชื่อเอกสาร", "warning");   return; }
+  if (!fileInput || !fileInput.files || !fileInput.files.length) {
+    showToast("กรุณาเลือกไฟล์", "warning");
+    return;
+  }
+
+  var file     = fileInput.files[0];
+  var fileName = file.name;
+  var mimeType = file.type || "application/octet-stream";
+
+  // แสดง Loading Spinner ระหว่างอัปโหลด
+  if (btn) {
+    btn.disabled    = true;
+    btn.innerHTML   = '<span class="spinner-border spinner-border-sm me-1"></span>กำลังอัปโหลด...';
+  }
+  if (msgEl) {
+    msgEl.style.display = "block";
+    msgEl.innerHTML = '<div class="qa-alert qa-alert-info">'
+      + '<span class="spinner-border spinner-border-sm me-2"></span>'
+      + 'กำลังอัปโหลด <strong>' + escHtml(fileName) + '</strong> ไปยัง Google Drive...'
+      + '</div>';
+  }
+
+  // อ่านไฟล์เป็น Base64 ผ่าน FileReader API
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    // ตัด prefix "data:...;base64," ออก เหลือแค่ Base64 ล้วนๆ
+    var base64Raw  = e.target.result;
+    var base64Data = base64Raw.split(",")[1];
+
+    // เรียก Backend ผ่าน google.script.run
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (btn) {
+          btn.disabled  = false;
+          btn.innerHTML = '<i class="bi bi-cloud-upload-fill me-1"></i>อัปโหลด';
+        }
+        if (res && res.success) {
+          if (msgEl) {
+            msgEl.innerHTML = '<div class="qa-alert qa-alert-success">'
+              + '<i class="bi bi-check-circle-fill"></i>'
+              + '<span>อัปโหลด <strong>' + escHtml(res.docName) + '</strong> สำเร็จ!</span>'
+              + '</div>';
+          }
+          // รีเซ็ต Input Form
+          document.getElementById("report-form-doc-name").value = "";
+          fileInput.value = "";
+
+          // อัปเดต State และ Re-render ทั้ง Admin และ Public
+          refreshAllData(function() {
+            renderReportFormAdminSection();
+            renderReportFormsPublic();
+            showToast('อัปโหลด "' + res.docName + '" สำเร็จ!', "success");
+          });
+        } else {
+          if (msgEl) {
+            msgEl.innerHTML = '<div class="qa-alert qa-alert-danger">'
+              + '<i class="bi bi-x-circle-fill"></i>'
+              + '<span>' + escHtml((res && res.message) || "เกิดข้อผิดพลาดในการอัปโหลด") + '</span>'
+              + '</div>';
+          }
+        }
+      })
+      .withFailureHandler(function(err) {
+        if (btn) {
+          btn.disabled  = false;
+          btn.innerHTML = '<i class="bi bi-cloud-upload-fill me-1"></i>อัปโหลด';
+        }
+        if (msgEl) {
+          msgEl.innerHTML = '<div class="qa-alert qa-alert-danger">'
+            + '<i class="bi bi-x-circle-fill"></i>'
+            + '<span>' + escHtml(err.message || String(err)) + '</span>'
+            + '</div>';
+        }
+        showToast("อัปโหลดไม่สำเร็จ: " + (err.message || err), "danger");
+      })
+      .uploadReportForm(base64Data, mimeType, fileName, docName);
+  };
+
+  reader.onerror = function() {
+    if (btn) {
+      btn.disabled  = false;
+      btn.innerHTML = '<i class="bi bi-cloud-upload-fill me-1"></i>อัปโหลด';
+    }
+    showToast("ไม่สามารถอ่านไฟล์ได้", "danger");
+  };
+
+  // เริ่มอ่านไฟล์เป็น Data URL (Base64)
+  reader.readAsDataURL(file);
 }
 
 // ── Settings ──────────────────────────────────────────────────

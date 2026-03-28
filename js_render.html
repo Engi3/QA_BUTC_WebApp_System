@@ -95,23 +95,200 @@ function renderPublicDashboard() {
 }
 
 function homeSelectTab(tab) {
-  var formPanel = document.getElementById("home-panel-form");
-  var qaPanel   = document.getElementById("home-panel-qa");
-  var iqaPanel  = document.getElementById("home-panel-iqa");
-  var formBtn   = document.getElementById("home-tab-form-btn");
-  var qaBtn     = document.getElementById("home-tab-qa-btn");
-  var iqaBtn    = document.getElementById("home-tab-iqa-btn");
+  var formPanel   = document.getElementById("home-panel-form");
+  var qaPanel     = document.getElementById("home-panel-qa");
+  var iqaPanel    = document.getElementById("home-panel-iqa");
+  var reportPanel = document.getElementById("home-panel-report");  // ✅ แท็บแบบฟอร์มรายงาน
+  var formBtn     = document.getElementById("home-tab-form-btn");
+  var qaBtn       = document.getElementById("home-tab-qa-btn");
+  var iqaBtn      = document.getElementById("home-tab-iqa-btn");
+  var reportBtn   = document.getElementById("home-tab-report-btn"); // ✅ ปุ่มแท็บใหม่
 
-  if (formPanel) formPanel.style.display = tab === "form" ? "block" : "none";
-  if (qaPanel)   qaPanel.style.display   = tab === "qa"   ? "block" : "none";
-  if (iqaPanel)  iqaPanel.style.display  = tab === "iqa"  ? "block" : "none";
+  // แสดง/ซ่อน Panel ตาม Tab ที่เลือก
+  if (formPanel)   formPanel.style.display   = tab === "form"   ? "block" : "none";
+  if (qaPanel)     qaPanel.style.display     = tab === "qa"     ? "block" : "none";
+  if (iqaPanel)    iqaPanel.style.display    = tab === "iqa"    ? "block" : "none";
+  if (reportPanel) reportPanel.style.display = tab === "report" ? "block" : "none";
 
-  if (formBtn) formBtn.className = tab === "form" ? "qa-tab-link active" : "qa-tab-link";
-  if (qaBtn)   qaBtn.className   = tab === "qa"   ? "qa-tab-link active" : "qa-tab-link";
-  if (iqaBtn)  iqaBtn.className  = tab === "iqa"  ? "qa-tab-link active" : "qa-tab-link";
+  // อัปเดต Active Class ของปุ่ม Tab
+  if (formBtn)   formBtn.className   = tab === "form"   ? "qa-tab-link active" : "qa-tab-link";
+  if (qaBtn)     qaBtn.className     = tab === "qa"     ? "qa-tab-link active" : "qa-tab-link";
+  if (iqaBtn)    iqaBtn.className    = tab === "iqa"    ? "qa-tab-link active" : "qa-tab-link";
+  if (reportBtn) reportBtn.className = tab === "report" ? "qa-tab-link active" : "qa-tab-link";
 
-  if (tab === "form") renderPublicFormProgress();
-  if (tab === "iqa" && typeof renderIqaPublicView === "function") renderIqaPublicView();
+  // เรียก Render Function ตาม Tab ที่เลือก
+  if (tab === "form")   renderPublicFormProgress();
+  if (tab === "iqa"    && typeof renderIqaPublicView === "function") renderIqaPublicView();
+  if (tab === "report") renderReportFormsPublic(); // ✅ Render ตารางแบบฟอร์มรายงาน
+}
+
+/**
+ * แสดงรายการแบบฟอร์มรายงานบนหน้าสาธารณะ
+ * - ถ้าไม่มีกลุ่ม: แสดงเป็นตารางเดียว (เหมือนเดิม)
+ * - ถ้ามีกลุ่ม: แสดงเป็น Bootstrap Accordion พับได้ กลุ่มแรกเปิดอัตโนมัติ
+ * - ไฟล์ไม่จัดกลุ่มจะแสดงที่ส่วนท้ายในหัวข้อ "ทั่วไป"
+ */
+function renderReportFormsPublic() {
+  var el = document.getElementById("public-report-forms-container");
+  if (!el) return;
+
+  var forms  = APP.reportForms      || [];
+  var groups = APP.reportFormGroups || [];
+  var order  = APP.reportFormOrder  || {};
+
+  // กรณีไม่มีแบบฟอร์มเลย
+  if (!forms.length) {
+    el.innerHTML = '<div class="qa-glass-card p-5 text-center">'
+      + '<i class="bi bi-folder2-open" style="font-size:3rem;color:var(--txt-muted);display:block;margin-bottom:12px;"></i>'
+      + '<p style="color:var(--txt-muted);font-size:.95rem;margin:0;">ยังไม่มีแบบฟอร์มรายงาน</p>'
+      + '</div>';
+    return;
+  }
+
+  // สร้าง lookup: fileId → file object
+  var fileMap = {};
+  forms.forEach(function(f) { fileMap[f.fileId] = f; });
+
+  // ── สร้างแถว HTML ของไฟล์ 1 ไฟล์ ──────────────────────────
+  function _fileRow(f) {
+    var ext = f.fileName ? f.fileName.split(".").pop().toUpperCase() : "DOC";
+    return '<tr>'
+      + '<td>'
+        + '<div style="display:flex;align-items:center;gap:10px;">'
+          + '<div style="width:38px;height:38px;border-radius:8px;background:rgba(37,99,235,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
+            + '<i class="bi bi-file-earmark-word-fill" style="font-size:1.2rem;color:#2563eb;"></i>'
+          + '</div>'
+          + '<div>'
+            + '<div style="font-weight:700;font-size:.9rem;color:var(--txt-1);">' + escHtml(f.docName) + '</div>'
+            + '<div style="font-size:.76rem;color:var(--txt-muted);">' + escHtml(f.fileName) + '</div>'
+          + '</div>'
+        + '</div>'
+      + '</td>'
+      + '<td style="text-align:center;">'
+        + '<span style="background:rgba(37,99,235,.1);color:#2563eb;font-size:.73rem;font-weight:700;padding:3px 10px;border-radius:20px;">' + escHtml(ext) + '</span>'
+      + '</td>'
+      + '<td style="text-align:center;">'
+        + '<a href="' + escHtml(f.downloadUrl) + '" target="_blank" class="qa-btn-primary btn-sm me-1" style="display:inline-flex;align-items:center;gap:6px;font-size:.82rem;" title="ดาวน์โหลดไฟล์">'
+          + '<i class="bi bi-download"></i>ดาวน์โหลด'
+        + '</a>'
+        + '<a href="' + escHtml(f.viewUrl || f.downloadUrl) + '" target="_blank" class="qa-btn-ghost btn-sm" style="display:inline-flex;align-items:center;gap:5px;font-size:.82rem;" title="ดูในGoogle Drive">'
+          + '<i class="bi bi-box-arrow-up-right"></i>'
+        + '</a>'
+      + '</td>'
+      + '</tr>';
+  }
+
+  // ── สร้างตารางจาก array ของ fileId ──────────────────────────
+  function _buildTable(fileIds) {
+    var rows = "";
+    fileIds.forEach(function(fid) {
+      var f = fileMap[fid];
+      if (f) rows += _fileRow(f);
+    });
+    if (!rows) return '<p style="color:var(--txt-muted);font-size:.85rem;padding:8px 0;margin:0;">ไม่มีแบบฟอร์มในกลุ่มนี้</p>';
+    return '<div class="table-responsive">'
+      + '<table class="qa-table" style="margin:0;">'
+        + '<thead><tr>'
+          + '<th>ชื่อเอกสาร</th>'
+          + '<th style="text-align:center;">ประเภท</th>'
+          + '<th style="text-align:center;">ดาวน์โหลด</th>'
+        + '</tr></thead>'
+        + '<tbody>' + rows + '</tbody>'
+      + '</table></div>';
+  }
+
+  // ── ถ้าไม่มีกลุ่มเลย: แสดง flat table ────────────────────
+  if (!groups.length) {
+    var allIds = [];
+    var seen   = {};
+    (order[""] || []).forEach(function(fid) {
+      if (fileMap[fid] && !seen[fid]) { allIds.push(fid); seen[fid] = true; }
+    });
+    forms.forEach(function(f) {
+      if (!seen[f.fileId]) { allIds.push(f.fileId); seen[f.fileId] = true; }
+    });
+
+    el.innerHTML = '<div class="qa-glass-card p-4">'
+      + '<div class="d-flex align-items-center gap-2 mb-4">'
+        + '<i class="bi bi-file-earmark-arrow-down-fill" style="font-size:1.4rem;color:var(--primary);"></i>'
+        + '<h6 style="margin:0;font-weight:700;">รายการแบบฟอร์มรายงาน</h6>'
+        + '<span style="background:var(--primary);color:white;font-size:.73rem;font-weight:700;padding:2px 9px;border-radius:20px;margin-left:4px;">' + forms.length + '</span>'
+      + '</div>'
+      + _buildTable(allIds)
+      + '</div>';
+    return;
+  }
+
+  // ── มีกลุ่ม: แสดง Bootstrap Accordion ────────────────────
+  var seenIds = {}; // ป้องกันไฟล์แสดงซ้ำ
+  var accItems = "";
+  var firstOpen = true; // กลุ่มแรกที่มีไฟล์จะเปิดเป็น default
+
+  groups.forEach(function(gName, idx) {
+    var fileIds = (order[gName] || []).filter(function(fid) {
+      return fileMap[fid] && !seenIds[fid];
+    });
+    fileIds.forEach(function(fid) { seenIds[fid] = true; });
+
+    var itemId = "rfg-" + idx;
+    var isOpen = firstOpen; // กลุ่มแรกเปิดอัตโนมัติ
+    if (firstOpen) firstOpen = false;
+
+    accItems += '<div class="accordion-item" style="border:1.5px solid var(--border-2);border-radius:10px;overflow:hidden;margin-bottom:8px;">'
+      + '<h2 class="accordion-header">'
+        + '<button class="accordion-button' + (isOpen ? '' : ' collapsed') + '" type="button" data-bs-toggle="collapse" data-bs-target="#' + itemId + '" style="font-weight:700;font-size:.92rem;background:var(--glass-bg);color:var(--txt-1);box-shadow:none;">'
+          + '<i class="bi bi-folder-fill me-2" style="color:var(--primary);"></i>'
+          + escHtml(gName)
+          + '<span style="background:var(--primary);color:white;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:20px;margin-left:10px;">' + fileIds.length + '</span>'
+        + '</button>'
+      + '</h2>'
+      + '<div id="' + itemId + '" class="accordion-collapse collapse' + (isOpen ? ' show' : '') + '">'
+        + '<div class="accordion-body" style="padding:12px 16px;">'
+          + _buildTable(fileIds)
+        + '</div>'
+      + '</div>'
+      + '</div>';
+  });
+
+  // ── ungrouped: แสดงที่ส่วนท้าย (ถ้ามี) ───────────────────
+  var ungroupedIds = [];
+  (order[""] || []).forEach(function(fid) {
+    if (fileMap[fid] && !seenIds[fid]) { ungroupedIds.push(fid); seenIds[fid] = true; }
+  });
+  // ไฟล์ที่ไม่อยู่ใน order เลย (migration guard)
+  forms.forEach(function(f) {
+    if (!seenIds[f.fileId]) { ungroupedIds.push(f.fileId); seenIds[f.fileId] = true; }
+  });
+
+  if (ungroupedIds.length) {
+    var uId     = "rfg-ungrouped";
+    var uIsOpen = firstOpen; // เปิดถ้าเป็น group เดียวที่แสดง
+    accItems += '<div class="accordion-item" style="border:1.5px solid var(--border-2);border-radius:10px;overflow:hidden;margin-bottom:8px;">'
+      + '<h2 class="accordion-header">'
+        + '<button class="accordion-button' + (uIsOpen ? '' : ' collapsed') + '" type="button" data-bs-toggle="collapse" data-bs-target="#' + uId + '" style="font-weight:700;font-size:.92rem;background:var(--glass-bg);color:var(--txt-1);box-shadow:none;">'
+          + '<i class="bi bi-folder2-open me-2" style="color:var(--txt-muted);"></i>'
+          + 'ทั่วไป'
+          + '<span style="background:var(--txt-muted);color:white;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:20px;margin-left:10px;">' + ungroupedIds.length + '</span>'
+        + '</button>'
+      + '</h2>'
+      + '<div id="' + uId + '" class="accordion-collapse collapse' + (uIsOpen ? ' show' : '') + '">'
+        + '<div class="accordion-body" style="padding:12px 16px;">'
+          + _buildTable(ungroupedIds)
+        + '</div>'
+      + '</div>'
+      + '</div>';
+  }
+
+  el.innerHTML = '<div class="qa-glass-card p-4">'
+    + '<div class="d-flex align-items-center gap-2 mb-4">'
+      + '<i class="bi bi-file-earmark-arrow-down-fill" style="font-size:1.4rem;color:var(--primary);"></i>'
+      + '<h6 style="margin:0;font-weight:700;">รายการแบบฟอร์มรายงาน</h6>'
+      + '<span style="background:var(--primary);color:white;font-size:.73rem;font-weight:700;padding:2px 9px;border-radius:20px;margin-left:4px;">' + forms.length + '</span>'
+    + '</div>'
+    + '<div class="accordion" id="rf-public-accordion">'
+      + accItems
+    + '</div>'
+    + '</div>';
 }
 
 function renderPublicFormProgress() {
@@ -694,12 +871,14 @@ function switchAdminTab(tabId){
   var t=document.getElementById(tabId); if(t) t.classList.add("active");
   var a=document.querySelector('[data-tab="'+tabId+'"]'); if(a) a.classList.add("active");
   // Lazy render: โหลดข้อมูลเมื่อสลับ tab เพื่อให้แน่ใจว่าแสดงข้อมูลล่าสุดเสมอ
-  if(tabId==="tab-forms")    { if(typeof renderFormList==="function") renderFormList(); }
-  if(tabId==="tab-users")    { if(typeof loadAllUsers==="function") loadAllUsers(); }
-  if(tabId==="tab-settings") { if(typeof renderSettingsYearList==="function") renderSettingsYearList(); }
-  if(tabId==="tab-theme")    initThemeEditor();
-  if(tabId==="tab-stats")    loadVisitStats();
-  if(tabId==="tab-iqa")      initIqaTab();
+  if(tabId==="tab-forms")         { if(typeof renderFormList==="function") renderFormList(); }
+  if(tabId==="tab-users")         { if(typeof loadAllUsers==="function") loadAllUsers(); }
+  if(tabId==="tab-settings")      { if(typeof renderSettingsYearList==="function") renderSettingsYearList(); }
+  if(tabId==="tab-theme")         initThemeEditor();
+  if(tabId==="tab-stats")         loadVisitStats();
+  if(tabId==="tab-iqa")           initIqaTab();
+  // ✅ Lazy render: โหลดตารางแบบฟอร์มรายงานทุกครั้งที่ Admin เปิด Tab นี้
+  if(tabId==="tab-report-forms")  { if(typeof renderReportFormAdminSection==="function") renderReportFormAdminSection(); }
 }
 
 function _formatMoneyRO(val) {

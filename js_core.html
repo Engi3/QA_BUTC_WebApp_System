@@ -31,6 +31,9 @@ var APP = {
   iqaMapping:    {},
   iqaSchema:     { phases: [] }, // Dynamic IQA Schema (Task 1)
   _iqaPages:     {},              // computed จาก iqaSchema
+  reportForms:      [],   // ✅ รายการแบบฟอร์มรายงานสำหรับดาวน์โหลด
+  reportFormGroups: [],   // ✅ ลำดับกลุ่ม เช่น ["งานบุคลากร","งานวิชาการ"]
+  reportFormOrder:  {},   // ✅ { "": [fileIds...], "ชื่อกลุ่ม": [fileIds...] }
   gradStops:     [{color:"#1e40af",pct:0},{color:"#2563eb",pct:50},{color:"#0ea5e9",pct:100}],
   gradDir:       "135deg",
   gradType:      "linear"
@@ -449,6 +452,9 @@ document.addEventListener("DOMContentLoaded", function() {
         APP.theme       = res.theme       || {};
         APP.visits      = res.visits      || {};
         APP.iqaMapping  = res.iqaMapping  || {};
+        APP.reportForms      = res.reportForms      || []; // ✅ เก็บ reportForms ไว้ใน Global State
+        APP.reportFormGroups = res.reportFormGroups || []; // ✅ เก็บ Config กลุ่มใน Global State
+        APP.reportFormOrder  = res.reportFormOrder  || {}; // ✅ เก็บ Config ลำดับใน Global State
         // โหลด Dynamic IQA Schema (Task 1) — คำนวณ _iqaPages และ iqaMapping จาก schema
         if (res.iqaSchema) {
           APP.iqaSchema = res.iqaSchema;
@@ -499,6 +505,9 @@ function refreshAllData(cb) {
         APP.departments = res.departments || []; // ✅ รับข้อมูล Department เข้ามาเก็บไว้
         APP.forms       = res.forms       || [];
         APP.visits      = res.visits      || {};
+        APP.reportForms      = res.reportForms      || []; // ✅ อัปเดต reportForms ใน refreshAllData ด้วย
+        APP.reportFormGroups = res.reportFormGroups || []; // ✅ อัปเดต Config กลุ่มด้วย
+        APP.reportFormOrder  = res.reportFormOrder  || {}; // ✅ อัปเดต Config ลำดับด้วย
         if (res.allUsers) APP.allUsersCache = res.allUsers;
         // อัปเดต iqaSchema หลัง refresh
         if (res.iqaSchema) {

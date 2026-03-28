@@ -5,10 +5,23 @@
 
 var tempUnregEmail = "";
 
-// ✅ นำมาวางตรงนี้ได้เลยครับ (เพื่อให้ระบบสร้างปุ่มตัวเลือกตอนเข้าหน้าสมัคร)
+// ✅ สร้าง Chip Grid สำหรับฟอร์มสมัครและผูก event validation
 function populateRegisterSections() {
   buildSectionChips("reg-sections-list", []);
   if(typeof buildDeptChips === 'function') buildDeptChips("reg-dept-list", []);
+
+  // ใช้ event delegation บน container เพื่อจับ chip click ที่ dynamic render
+  // เหตุผล: chip buttons ถูก render ใหม่ทุกครั้ง จึงผูก listener บน container แทน
+  ["reg-sections-list", "reg-dept-list"].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    // ลบ listener เก่าออกก่อน (กรณี populateRegisterSections ถูกเรียกซ้ำ)
+    el.removeEventListener("click", _updateRegBtnState);
+    el.addEventListener("click", _updateRegBtnState);
+  });
+
+  // reset สถานะปุ่มและ hint ให้ตรงกับ initial state (ยังไม่ได้เลือกอะไร)
+  _updateRegBtnState();
 }
 /*
 function loginWithGoogle() {
@@ -135,19 +148,27 @@ function proceedToRegister(){
 
 function handleRegistration(event){
   event.preventDefault();
+
+  // ── Validation Guard (ป้องกันกรณีปุ่ม disabled ถูก bypass) ──
+  var fd        = new FormData(event.target);
+  var positions = fd.getAll("positions");
+  if (!positions.length) { showToast("กรุณาเลือกตำแหน่งงาน", "warning"); return; }
+
+  var isMgr        = positions.includes("ผู้บริหาร");
+  var sectionsToSave = isMgr ? getSelectedChips("reg-dept-list") : getSelectedChips("reg-sections-list");
+
+  if (!sectionsToSave.length) {
+    showToast(isMgr ? "กรุณาเลือกฝ่าย/สังกัดก่อนสมัคร" : "กรุณาเลือกงาน/สังกัดก่อนสมัคร", "warning");
+    return;
+  }
+  // ────────────────────────────────────────────────────────────
+
   var btn = document.getElementById("btnRegister");
   if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...'; }
-  
-  var fd = new FormData(event.target);
-  var positions = fd.getAll("positions");
-  var isMgr = positions.includes("ผู้บริหาร"); // เช็คว่าเป็น Manager ไหม
-  
-  // ✅ ดึงค่าจากกล่องให้ตรงกับบทบาท (Manager ดึงจากฝ่าย | User ดึงจากงานย่อย)
-  var sectionsToSave = isMgr ? getSelectedChips("reg-dept-list") : getSelectedChips("reg-sections-list"); 
-  
-  var data = { 
-      email: fd.get("email"), prefix: fd.get("prefix"), fname: fd.get("fname"), lname: fd.get("lname"), 
-      phone: fd.get("phone"), positions: positions, sections: sectionsToSave 
+
+  var data = {
+      email: fd.get("email"), prefix: fd.get("prefix"), fname: fd.get("fname"), lname: fd.get("lname"),
+      phone: fd.get("phone"), positions: positions, sections: sectionsToSave
   };
   
   google.script.run
@@ -268,14 +289,12 @@ function checkRegPositions() {
   // ดึงรายการตำแหน่งที่ถูกติ๊ก
   var cbs = Array.from(document.querySelectorAll('#regForm input[name="positions"]:checked')).map(function(x){return x.value;});
   var notice = document.getElementById("reg-mgr-notice");
-  
-  // ✅ เช็คว่ามีคำว่า "ผู้บริหาร" รวมอยู่ด้วยหรือไม่
-  var isMgr = cbs.includes("ผู้บริหาร"); 
-  
-  // ✅ ถ้าเป็น Manager ให้แสดง Department | ถ้าเป็น User ให้แสดง Section
+
+  // ถ้าเป็น Manager ให้แสดง Department | ถ้าเป็น User ให้แสดง Section
+  var isMgr = cbs.includes("ผู้บริหาร");
   document.getElementById("reg-dept-container").style.display = isMgr ? "block" : "none";
   document.getElementById("reg-sec-container").style.display  = isMgr ? "none" : "block";
-  
+
   if (isMgr) {
     notice.style.display = "flex";
     if (cbs.length === 1) {
@@ -285,6 +304,46 @@ function checkRegPositions() {
     }
   } else {
     notice.style.display = "none";
+  }
+
+  // อัปเดตสถานะปุ่มสมัครทุกครั้งที่ตำแหน่งเปลี่ยน
+  _updateRegBtnState();
+}
+
+/**
+ * ตรวจสอบว่ากรอกข้อมูลที่จำเป็นครบหรือไม่ แล้ว enable/disable ปุ่มสมัคร
+ * กฎ:
+ * - ผู้บริหาร   → ต้องเลือก Department (reg-dept-list) อย่างน้อย 1 รายการ
+ * - ตำแหน่งอื่น → ต้องเลือก Section (reg-sections-list) อย่างน้อย 1 รายการ
+ */
+function _updateRegBtnState() {
+  var btn    = document.getElementById("btnRegister");
+  var hint   = document.getElementById("reg-btn-hint");
+  if (!btn) return;
+
+  var cbs   = Array.from(document.querySelectorAll('#regForm input[name="positions"]:checked')).map(function(x){ return x.value; });
+  var isMgr = cbs.includes("ผู้บริหาร");
+
+  // ยังไม่ได้เลือกตำแหน่งงานเลย → disable (ไม่แสดง hint)
+  if (!cbs.length) {
+    btn.disabled = true;
+    if (hint) hint.style.display = "none";
+    return;
+  }
+
+  var selected = (isMgr ? getSelectedChips("reg-dept-list") : getSelectedChips("reg-sections-list")).length > 0;
+
+  btn.disabled = !selected;
+
+  if (hint) {
+    if (!selected) {
+      hint.style.display = "flex";
+      hint.innerHTML = isMgr
+        ? '<i class="bi bi-exclamation-triangle-fill"></i><span>กรุณาเลือก <strong>ฝ่าย/สังกัด</strong> ก่อนกดสมัคร</span>'
+        : '<i class="bi bi-exclamation-triangle-fill"></i><span>กรุณาเลือก <strong>งาน/สังกัด</strong> ก่อนกดสมัคร</span>';
+    } else {
+      hint.style.display = "none";
+    }
   }
 }
 

@@ -5,7 +5,6 @@
 // Architecture: MVC-like pattern within Google Apps Script
 // Roles: Admin | Manager | User
 // ============================================================
-const SS_ID = "1h5V8lB9vJpYBsaGEKuhhEiyf0iPhlH-NKZccMKd4wGw";
 const SPREADSHEET_NAME = "QA_BUTC_Database_v3";
 
 // เอา ID จาก Log มาใส่ตรงนี้เลยครับ
@@ -125,7 +124,8 @@ function initSheetHeaders(sheet, sheetName) {
     "tb_audit":    ["Timestamp", "UserEmail", "Action", "Target", "Detail"],
     "tb_theme":    ["Key", "Value", "UpdatedAt", "UpdatedBy"],
     "tb_iqa_mapping": ["PageID", "MappingJSON", "UpdatedAt", "UpdatedBy"], // เพิ่มบรรทัดนี้
-    "tb_departments": ["DeptID", "DeptName", "Description", "AssignedSections", "IconClass", "ColorClass", "IsActive", "CreatedAt", "CreatedBy"] // ✅ เพิ่มบรรทัดนี้
+    "tb_departments": ["DeptID", "DeptName", "Description", "AssignedSections", "IconClass", "ColorClass", "IsActive", "CreatedAt", "CreatedBy"], // ✅ เพิ่ม tb_departments
+    "tb_report_forms": ["FileID", "DocName", "FileName", "DownloadURL", "ViewURL", "UploadedAt", "UploadedBy"] // ✅ เพิ่ม tb_report_forms สำหรับเก็บ Metadata แบบฟอร์มรายงาน
   };
   if (headers[sheetName]) {
     sheet.appendRow(headers[sheetName]);
@@ -142,7 +142,7 @@ function initializeDatabase() {
     const sheets = [
       "tb_admins", "tb_managers", "tb_users",
       "tb_sections", "tb_forms", "tb_data",
-      "tb_settings", "tb_audit", "tb_theme", "tb_visits", "tb_iqa_mapping", "tb_departments" // ✅ เพิ่ม tb_departments
+      "tb_settings", "tb_audit", "tb_theme", "tb_visits", "tb_iqa_mapping", "tb_departments", "tb_report_forms" // ✅ เพิ่ม tb_report_forms
     ];
     sheets.forEach(s => ensureSheetExists(s));
     return { success: true, message: "ฐานข้อมูลพร้อมใช้งาน" };
@@ -1327,45 +1327,54 @@ function loadInitialData() {
     var staticData = _getCache('app_static_data');
     if (!staticData) {
       staticData = {
-        settings:    getSystemSettings().data    || [],
-        sections:    getAllSections().data       || [],
-        departments: getAllDepartments().data    || [],
-        forms:       getAllForms().data          || [],
-        theme:       getThemeSettings().data     || {},
-        iqaMapping:  getIqaMappingData().data    || {},
-        iqaSchema:   getIqaSchema().data        || { phases: [] },
-        allUsers:    getAllUsers().data          || { admins: [], managers: [], users: [] }
+        settings:     getSystemSettings().data    || [],
+        sections:     getAllSections().data        || [],
+        departments:  getAllDepartments().data     || [],
+        forms:        getAllForms().data           || [],
+        theme:        getThemeSettings().data      || {},
+        iqaMapping:   getIqaMappingData().data     || {},
+        iqaSchema:    getIqaSchema().data          || { phases: [] },
+        allUsers:     getAllUsers().data           || { admins: [], managers: [], users: [] },
+        reportForms:      getReportFormsList().data        || [], // ✅ โหลดรายการแบบฟอร์มรายงาน
+        reportFormGroups: (function() { try { return getReportFormGroupsConfig().groups || []; } catch(e) { return []; } })(),
+        reportFormOrder:  (function() { try { return getReportFormGroupsConfig().order  || {}; } catch(e) { return {}; } })()
       };
       _putCache('app_static_data', staticData, 300); // cache 5 min
     }
 
     return {
-      success:     true,
-      settings:    staticData.settings,
-      sections:    staticData.sections,
-      departments: staticData.departments,
-      forms:       staticData.forms,
-      theme:       staticData.theme,
-      iqaMapping:  staticData.iqaMapping,
-      iqaSchema:   staticData.iqaSchema,
-      allUsers:    staticData.allUsers,
-      dashboard:   dashboard.data || [],
-      visits:      visits
+      success:          true,
+      settings:         staticData.settings,
+      sections:         staticData.sections,
+      departments:      staticData.departments,
+      forms:            staticData.forms,
+      theme:            staticData.theme,
+      iqaMapping:       staticData.iqaMapping,
+      iqaSchema:        staticData.iqaSchema,
+      allUsers:         staticData.allUsers,
+      reportForms:      staticData.reportForms,      // ✅ ส่ง reportForms ไปให้ Frontend
+      reportFormGroups: staticData.reportFormGroups, // ✅ ส่ง Config กลุ่มไปให้ Frontend
+      reportFormOrder:  staticData.reportFormOrder,  // ✅ ส่ง Config ลำดับไปให้ Frontend
+      dashboard:    dashboard.data || [],
+      visits:       visits
     };
   } catch(e) {
     console.error("🔥 ERROR in loadInitialData: " + e.stack);
     return {
-      success:     false,
-      message:     e.toString(),
-      settings:    [],
-      sections:    [],
-      departments: [],
-      forms:       [],
-      theme:       {},
-      visits:      { total: 0, uniqueUsers: 0, today: 0 },
-      iqaMapping:  {},
-      allUsers:    { admins: [], managers: [], users: [] },
-      dashboard:   []
+      success:      false,
+      message:      e.toString(),
+      settings:     [],
+      sections:     [],
+      departments:  [],
+      forms:        [],
+      theme:        {},
+      visits:       { total: 0, uniqueUsers: 0, today: 0 },
+      iqaMapping:   {},
+      allUsers:         { admins: [], managers: [], users: [] },
+      reportForms:      [], // ✅ ส่ง Array ว่างกรณีเกิด Error
+      reportFormGroups: [], // ✅ กลุ่มว่างกรณีเกิด Error
+      reportFormOrder:  {}, // ✅ ลำดับว่างกรณีเกิด Error
+      dashboard:        []
     };
   }
 }
@@ -1393,6 +1402,346 @@ function recordVisit(type, email) {
     ensureSheetExists("tb_visits").appendRow([new Date(), type||"view", email||"guest", "", ""]);
   } catch(e) {}
 }
+
+// ─────────────────────────────────────────
+// 12. REPORT FORMS MANAGEMENT
+// จัดการแบบฟอร์มรายงาน: อัปโหลด/ดึง/ลบ/เปลี่ยนชื่อ
+// ─────────────────────────────────────────
+
+/**
+ * ค้นหาหรือสร้าง Sub-folder "QA_Report_Forms"
+ * ภายใน Folder เดียวกับ Script เพื่อเก็บไฟล์แบบฟอร์ม
+ */
+function getOrCreateReportFormsFolder() {
+  const parentFolder = getScriptFolder();
+  const folderName   = "QA_Report_Forms";
+  // ค้นหา Folder ที่มีชื่อตรงกันก่อน เพื่อไม่สร้างซ้ำ
+  const iter = parentFolder.getFoldersByName(folderName);
+  if (iter.hasNext()) {
+    return iter.next();
+  }
+  // ไม่พบ → สร้างใหม่ภายใน Folder เดิม
+  return parentFolder.createFolder(folderName);
+}
+
+/**
+ * อัปโหลดไฟล์แบบฟอร์มรายงาน (รับข้อมูล Base64 จาก Frontend)
+ * บันทึก Metadata ลงใน tb_report_forms
+ * @param {string} base64Data - ข้อมูลไฟล์แบบ Base64
+ * @param {string} mimeType   - ประเภทไฟล์ เช่น "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+ * @param {string} fileName   - ชื่อไฟล์จริง เช่น "report_template.docx"
+ * @param {string} docName    - ชื่อเอกสารที่แสดงบนหน้าเว็บ (กรอกโดย Admin)
+ */
+function uploadReportForm(base64Data, mimeType, fileName, docName) {
+  try {
+    const adminEmail = Session.getActiveUser().getEmail();
+    const folder     = getOrCreateReportFormsFolder();
+
+    // แปลง Base64 → Blob แล้วสร้างไฟล์ใน Drive
+    const decoded   = Utilities.base64Decode(base64Data);
+    const blob      = Utilities.newBlob(decoded, mimeType, fileName);
+    const driveFile = folder.createFile(blob);
+
+    // ─────────────────────────────────────────────────────────
+    // ตั้งค่าสิทธิ์การแชร์แบบ Fault-tolerant
+    // บางองค์กร (Google Workspace) ปิดการแชร์ภายนอก ทำให้ setSharing() throw exception
+    // ลำดับการลอง: DOMAIN (ภายในองค์กร) → ANYONE_WITH_LINK → ข้ามถ้าทั้งคู่ไม่ได้
+    // ไม่ว่าจะ setSharing ได้หรือไม่ กระบวนการบันทึก Metadata ยังดำเนินต่อเสมอ
+    // ─────────────────────────────────────────────────────────
+    let sharingMode = "owner_only"; // บันทึกว่า Sharing ถูกตั้งค่าอะไรได้บ้าง
+    try {
+      // ลองแชร์ภายในโดเมนองค์กรก่อน (เหมาะสำหรับ Google Workspace โรงเรียน)
+      driveFile.setSharing(DriveApp.Access.DOMAIN, DriveApp.Permission.VIEW);
+      sharingMode = "domain";
+    } catch(domainErr) {
+      try {
+        // ถ้าแชร์ Domain ไม่ได้ ลองแชร์แบบ Public Link
+        driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        sharingMode = "anyone_with_link";
+      } catch(anyoneErr) {
+        // ถ้าทั้งคู่ไม่ได้ (Workspace Admin ล็อกสิทธิ์ไว้) → ข้ามต่อ ไฟล์เป็น Owner Only
+        // Admin ยังเข้าถึงและแชร์ด้วยตัวเองได้จาก Google Drive
+        console.warn("setSharing ไม่สำเร็จ (Workspace Admin อาจล็อกสิทธิ์): " + anyoneErr);
+      }
+    }
+
+    const fileId      = driveFile.getId();
+    // ใช้ Direct Download URL ที่รองรับทั้ง Workspace และ Personal Account
+    const downloadUrl = "https://drive.google.com/uc?export=download&id=" + fileId;
+    const viewUrl     = driveFile.getUrl();
+
+    // บันทึก Metadata ลงใน Sheet tb_report_forms
+    const sheet = ensureSheetExists("tb_report_forms");
+    sheet.appendRow([
+      fileId,
+      docName  || fileName,  // ชื่อเอกสารที่แสดง (ถ้าไม่ระบุ ใช้ชื่อไฟล์แทน)
+      fileName,
+      downloadUrl,
+      viewUrl,
+      new Date(),
+      adminEmail
+    ]);
+
+    // เพิ่ม fileId เข้ากลุ่ม "ไม่จัดกลุ่ม" (key = "") ใน Config ลำดับกลุ่ม
+    // เพื่อให้ไฟล์ใหม่แสดงผลตามลำดับที่กำหนดทันทีในหน้าสาธารณะ
+    try {
+      const rfConfig = getReportFormGroupsConfig();
+      const rfOrder  = rfConfig.order || {};
+      if (!Array.isArray(rfOrder[""])) rfOrder[""] = [];
+      rfOrder[""].push(fileId);
+      saveReportFormGroupsConfig(rfConfig.groups || [], rfOrder);
+    } catch(orderErr) {
+      console.warn("ไม่สามารถบันทึกลำดับกลุ่มได้ (ไม่กระทบการอัปโหลด): " + orderErr);
+    }
+
+    _clearAppCache(); // ล้าง Cache เพื่อให้ Frontend โหลดข้อมูลใหม่ได้ทันที
+    writeAuditLog(adminEmail, "UPLOAD_REPORT_FORM", fileId, docName + " (" + fileName + ")");
+
+    return {
+      success:     true,
+      fileId:      fileId,
+      docName:     docName || fileName,
+      downloadUrl: downloadUrl
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * ดึงรายการแบบฟอร์มรายงานทั้งหมดจาก tb_report_forms
+ * คืนค่าเป็น Array ของ Object สำหรับแสดงผลบน Frontend
+ */
+function getReportFormsList() {
+  try {
+    const sheet = ensureSheetExists("tb_report_forms");
+    const data  = sheet.getDataRange().getValues();
+    const forms = [];
+
+    // วนอ่านข้อมูลตั้งแต่แถวที่ 2 (ข้ามหัวตาราง)
+    for (let i = 1; i < data.length; i++) {
+      if (!data[i][0]) continue; // ข้ามแถวที่ FileID ว่าง
+      forms.push({
+        fileId:      String(data[i][0]),
+        docName:     String(data[i][1] || ""),
+        fileName:    String(data[i][2] || ""),
+        downloadUrl: String(data[i][3] || ""),
+        viewUrl:     String(data[i][4] || ""),
+        uploadedAt:  data[i][5] instanceof Date ? data[i][5].toISOString() : String(data[i][5] || ""),
+        uploadedBy:  String(data[i][6] || "")
+      });
+    }
+    return { success: true, data: forms };
+  } catch(e) {
+    return { success: true, data: [] };
+  }
+}
+
+/**
+ * ลบแบบฟอร์มรายงาน:
+ * 1. ย้ายไฟล์ใน Drive ไปที่ Trash
+ * 2. ลบแถว Metadata ออกจาก tb_report_forms
+ * @param {string} fileId - Drive File ID ที่ต้องการลบ
+ */
+function deleteReportForm(fileId) {
+  try {
+    _clearAppCache();
+    const adminEmail = Session.getActiveUser().getEmail();
+
+    // ลบไฟล์จาก Drive (ย้ายไป Trash ไม่ได้ลบถาวร)
+    try {
+      DriveApp.getFileById(fileId).setTrashed(true);
+    } catch(driveErr) {
+      // ถ้าไม่พบไฟล์ใน Drive (อาจถูกลบแล้ว) ให้ทำงานต่อได้
+      console.warn("ไม่พบไฟล์ใน Drive: " + driveErr);
+    }
+
+    // ลบแถว Metadata ออกจาก Sheet (วนจากล่างขึ้นบนเพื่อ index ไม่เลื่อน)
+    const sheet = ensureSheetExists("tb_report_forms");
+    const data  = sheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][0]) === String(fileId)) {
+        sheet.deleteRow(i + 1); // +1 เพราะ getValues นับจาก 0 แต่ Sheet นับจาก 1
+        break;
+      }
+    }
+
+    // ลบ fileId ออกจากทุก group ใน Config ลำดับกลุ่ม
+    // ป้องกัน fileId ค้างอยู่ใน order หลังลบแบบฟอร์มแล้ว
+    try {
+      const rfConfig = getReportFormGroupsConfig();
+      const rfOrder  = rfConfig.order || {};
+      Object.keys(rfOrder).forEach(function(gKey) {
+        if (Array.isArray(rfOrder[gKey])) {
+          rfOrder[gKey] = rfOrder[gKey].filter(function(id) { return String(id) !== String(fileId); });
+        }
+      });
+      saveReportFormGroupsConfig(rfConfig.groups || [], rfOrder);
+    } catch(orderErr) {
+      console.warn("ไม่สามารถอัปเดตลำดับกลุ่มหลังลบ (ไม่กระทบการลบ): " + orderErr);
+    }
+
+    writeAuditLog(adminEmail, "DELETE_REPORT_FORM", fileId, "Deleted");
+    return { success: true };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * เปลี่ยนชื่อเอกสาร (DocName) ที่แสดงบนหน้าเว็บ
+ * ไม่ได้เปลี่ยนชื่อไฟล์จริงใน Drive เพื่อหลีกเลี่ยง Link เสีย
+ * @param {string} fileId     - Drive File ID ที่ต้องการแก้ไข
+ * @param {string} newDocName - ชื่อเอกสารใหม่
+ */
+function renameReportForm(fileId, newDocName) {
+  try {
+    _clearAppCache();
+    const adminEmail = Session.getActiveUser().getEmail();
+    const sheet = ensureSheetExists("tb_report_forms");
+    const data  = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(fileId)) {
+        // คอลัมน์ที่ 2 (index 1 → Sheet Column B) คือ DocName
+        sheet.getRange(i + 1, 2).setValue(newDocName);
+        writeAuditLog(adminEmail, "RENAME_REPORT_FORM", fileId, newDocName);
+        return { success: true };
+      }
+    }
+    return { success: false, message: "ไม่พบแบบฟอร์มที่ต้องการแก้ไข" };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * แทนที่ไฟล์แบบฟอร์มรายงาน (Replace):
+ * ลบไฟล์เก่าออกจาก Drive + อัปโหลดไฟล์ใหม่ + อัปเดต Metadata ใน Sheet
+ * @param {string} oldFileId  - Drive File ID ของไฟล์เก่าที่จะถูกแทนที่
+ * @param {string} base64Data - ข้อมูลไฟล์ใหม่แบบ Base64
+ * @param {string} mimeType   - ประเภทไฟล์ใหม่
+ * @param {string} fileName   - ชื่อไฟล์ใหม่
+ * @param {string} newDocName - ชื่อเอกสารใหม่ที่แสดงบนหน้าเว็บ (ถ้าว่างใช้ชื่อเดิม)
+ */
+function replaceReportForm(oldFileId, base64Data, mimeType, fileName, newDocName) {
+  try {
+    _clearAppCache();
+    const adminEmail = Session.getActiveUser().getEmail();
+    const folder     = getOrCreateReportFormsFolder();
+
+    // ลบไฟล์เก่าออกจาก Drive ก่อน
+    try {
+      DriveApp.getFileById(oldFileId).setTrashed(true);
+    } catch(driveErr) {
+      console.warn("ไม่พบไฟล์เก่าใน Drive: " + driveErr);
+    }
+
+    // อัปโหลดไฟล์ใหม่ (ใช้ Fault-tolerant setSharing เหมือน uploadReportForm)
+    const decoded    = Utilities.base64Decode(base64Data);
+    const blob       = Utilities.newBlob(decoded, mimeType, fileName);
+    const driveFile  = folder.createFile(blob);
+    try {
+      driveFile.setSharing(DriveApp.Access.DOMAIN, DriveApp.Permission.VIEW);
+    } catch(e1) {
+      try { driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch(e2) {}
+    }
+
+    const newFileId     = driveFile.getId();
+    const newDownloadUrl = "https://drive.google.com/uc?export=download&id=" + newFileId;
+    const newViewUrl     = driveFile.getUrl();
+
+    // อัปเดต Metadata ใน Sheet (แทนที่แถวเดิมของ oldFileId)
+    const sheet = ensureSheetExists("tb_report_forms");
+    const data  = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(oldFileId)) {
+        const docName = newDocName || String(data[i][1]); // ถ้าไม่ระบุชื่อใหม่ ใช้ชื่อเดิม
+        sheet.getRange(i + 1, 1, 1, 7).setValues([[
+          newFileId, docName, fileName, newDownloadUrl, newViewUrl, new Date(), adminEmail
+        ]]);
+        writeAuditLog(adminEmail, "REPLACE_REPORT_FORM", newFileId, "แทนที่ " + oldFileId);
+        return { success: true, fileId: newFileId, downloadUrl: newDownloadUrl };
+      }
+    }
+    return { success: false, message: "ไม่พบแบบฟอร์มเดิมในฐานข้อมูล" };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────
+// 13. REPORT FORM GROUP MANAGEMENT
+// จัดการกลุ่มแบบฟอร์มรายงาน: อ่าน/บันทึก Config
+// ─────────────────────────────────────────
+
+/**
+ * ดึง Config กลุ่มแบบฟอร์มรายงานจาก tb_theme
+ * - groups: Array ชื่อกลุ่มตามลำดับ เช่น ["งานบุคลากร","งานวิชาการ"]
+ * - order:  Object { "": [fileId,...], "ชื่อกลุ่ม": [fileId,...] }
+ *           key = "" หมายถึงไฟล์ "ไม่จัดกลุ่ม"
+ */
+function getReportFormGroupsConfig() {
+  try {
+    const themeData = getThemeSettings().data || {};
+    let groups = [];
+    let order  = {};
+    try { groups = JSON.parse(themeData.report_form_groups || "[]"); } catch(e) { groups = []; }
+    try { order  = JSON.parse(themeData.report_form_order  || "{}"); } catch(e) { order  = {}; }
+    // ตรวจสอบ Type ให้ถูกต้องก่อนส่งออก
+    if (!Array.isArray(groups)) groups = [];
+    if (typeof order !== "object" || Array.isArray(order)) order = {};
+    return { success: true, groups: groups, order: order };
+  } catch(e) {
+    return { success: false, groups: [], order: {} };
+  }
+}
+
+/**
+ * บันทึก Config กลุ่มแบบฟอร์มรายงานลงใน tb_theme
+ * @param {Array}  groups - ลำดับกลุ่ม เช่น ["งานบุคลากร","งานวิชาการ"]
+ * @param {Object} order  - { "": [fileIds...], "ชื่อกลุ่ม": [fileIds...] }
+ */
+function saveReportFormGroupsConfig(groups, order) {
+  try {
+    _clearAppCache(); // ล้าง Cache ก่อนบันทึก เพื่อให้ Frontend โหลดข้อมูลใหม่ทันที
+    const adminEmail = Session.getActiveUser().getEmail();
+    const sh   = ensureSheetExists("tb_theme");
+    const data = sh.getDataRange().getValues();
+
+    // ตรวจสอบ Type ก่อนแปลงเป็น JSON
+    const groupsJson = JSON.stringify(Array.isArray(groups) ? groups : []);
+    const orderJson  = JSON.stringify((typeof order === "object" && !Array.isArray(order)) ? order : {});
+
+    const toSave = {
+      "report_form_groups": groupsJson,
+      "report_form_order":  orderJson
+    };
+
+    // วน upsert ทีละ key ใน tb_theme
+    Object.keys(toSave).forEach(function(key) {
+      const val  = toSave[key];
+      let found  = false;
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][0]) === key) {
+          sh.getRange(i + 1, 1, 1, 4).setValues([[key, val, new Date(), adminEmail]]);
+          found = true; break;
+        }
+      }
+      if (!found) sh.appendRow([key, val, new Date(), adminEmail]);
+    });
+
+    writeAuditLog(adminEmail, "SAVE_RF_GROUPS", "", "Updated RF groups config");
+    return { success: true };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────
+// TEST & DIAGNOSTIC FUNCTIONS
+// ─────────────────────────────────────────
 
 function TEST_fetchData() {
   // จำลองการดึงข้อมูลตอนโหลดแอป
