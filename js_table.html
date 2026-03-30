@@ -493,6 +493,23 @@ function _buildCellInput(ckey, col, fkey, ri, ci, showRowTotal, showColTotal, td
     return '<select class="qa-input" name="'+escHtml(ckey)+'" onchange="_onSelectCustomChange(this,\''+customId+'\')" style="'+st+'">'+opts+'</select>'
       +(col.allowCustom ? '<textarea id="'+customId+'" name="'+escHtml(ckey)+'_custom" class="qa-input mt-1 auto-expand" placeholder="โปรดระบุ..." style="display:none; font-size:.78rem; padding:4px; min-height:34px; resize:vertical; width:100%;" oninput="autoExpand(this)"></textarea>' : '');
   }
+  if (col.type==="radio") {
+    var rcustomId = 'custom-' + ckey;
+    var ritems = col.items || [];
+    var rads = ritems.map(function(lb, ii) {
+      return '<label style="display:flex;align-items:flex-start;gap:6px;cursor:pointer;margin-bottom:4px;font-size:.82rem;color:var(--txt-2);">'
+        +'<input type="radio" name="'+escHtml(ckey)+'" value="'+escHtml(lb)+'" onchange="_onSelectCustomChange(this,\''+rcustomId+'\')" style="margin-top:3px;width:15px;height:15px;">'
+        +'<span>'+escHtml(lb)+'</span></label>';
+    }).join("");
+    
+    if (col.allowCustom) {
+      rads += '<label style="display:flex;align-items:flex-start;gap:6px;cursor:pointer;margin-bottom:4px;font-size:.82rem;color:var(--txt-2);">'
+        +'<input type="radio" name="'+escHtml(ckey)+'" value="__custom__" onchange="_onSelectCustomChange(this,\''+rcustomId+'\')" style="margin-top:3px;width:15px;height:15px;">'
+        +'<span>อื่นๆ:</span></label>'
+        +'<textarea id="'+rcustomId+'" name="'+escHtml(ckey)+'_custom" class="qa-input mt-1 auto-expand" placeholder="โปรดระบุ..." style="display:none; font-size:.78rem; padding:4px; min-height:34px; resize:vertical; width:100%;" oninput="autoExpand(this)"></textarea>';
+    }
+    return '<div style="padding:4px;">'+rads+'</div>';
+  }
   if (col.type==="checkbox") {
     return '<div style="text-align:center;padding:6px;">'
       +'<input type="checkbox" class="tbl-chk-input" name="'+escHtml(ckey)+'" value="ON" onchange="'+onInput+'" style="width:18px;height:18px;cursor:pointer;accent-color:var(--primary);">'
