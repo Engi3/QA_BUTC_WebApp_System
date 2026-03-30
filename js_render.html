@@ -317,7 +317,9 @@ function _renderFormProgressGrid(containerId, year) {
   var activeSections = (APP.sections || []).filter(function(s) { return s.isActive; });
   var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">';
   activeForms.forEach(function(form) {
-    var totalFields = 0, completedFields = 0;
+    var totalPoints = 0, completedPoints = 0;
+    var fieldCount = (form.fields || []).filter(function(f){ return f.type!=="divider" && f.type!=="image"; }).length;
+    
     activeSections.forEach(function(sec) {
       var dashRow = null;
       for (var i = 0; i < yearData.length; i++) {
@@ -325,10 +327,12 @@ function _renderFormProgressGrid(containerId, year) {
       }
       var dataObj = {};
       if (dashRow && dashRow.dataJson) { try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) {} }
+      
       (form.fields || []).forEach(function(field) {
         if (field.type === "divider" || field.type === "image") return;
         if (field.sectionIds && field.sectionIds.length && field.sectionIds.indexOf(sec.sectionId) < 0) return;
-        totalFields++;
+        
+        totalPoints++;
         if (field.type === "table") {
           var prefix = field.key + "_r";
           var hasData = Object.keys(dataObj).some(function(k) {
@@ -336,22 +340,25 @@ function _renderFormProgressGrid(containerId, year) {
               && k.indexOf("_total_rows") < 0 && k.indexOf("_col_meta") < 0 && k.indexOf("_table_def") < 0
               && dataObj[k] !== "" && dataObj[k] !== null && dataObj[k] !== undefined;
           });
-          if (hasData) completedFields++;
+          if (hasData) completedPoints++;
         } else {
           var v = dataObj[field.key];
-          if (v !== undefined && v !== null && v !== "") completedFields++;
+          if (v !== undefined && v !== null && v !== "") completedPoints++;
         }
       });
     });
-    var pct = totalFields > 0 ? Math.round(completedFields / totalFields * 100) : 0;
+
+    var pct = totalPoints > 0 ? Math.round(completedPoints / totalPoints * 100) : 0;
     var sColor = pct === 100 ? "var(--success)" : (pct > 0 ? "var(--warning)" : "var(--danger)");
+    
     html += '<div class="qa-glass-card p-3">'
-      + '<div style="font-weight:700;font-size:.9rem;color:var(--txt);margin-bottom:8px;"><i class="bi bi-file-earmark-text me-2" style="color:var(--primary);"></i>' + escHtml(form.formName) + '</div>'
+      + '<div style="font-weight:700;font-size:.9rem;color:var(--txt);margin-bottom:2px;"><i class="bi bi-file-earmark-text me-2" style="color:var(--primary);"></i>' + escHtml(form.formName) + '</div>'
+      + '<div style="font-size:.7rem;color:var(--txt-muted);margin-bottom:8px;">' + fieldCount + ' ฟิลด์ | เป้าหมาย ' + activeSections.length + ' Section</div>'
       + '<div class="progress mb-2" style="height:6px;background:var(--border-2);border-radius:3px;">'
       +   '<div class="progress-bar" style="width:' + pct + '%;background-color:' + sColor + ';"></div>'
       + '</div>'
       + '<div style="font-size:.78rem;color:var(--txt-muted);display:flex;justify-content:space-between;">'
-      +   '<span>กรอกแล้ว ' + completedFields + ' / ' + totalFields + ' ฟิลด์</span>'
+      +   '<span>กรอกแล้ว ' + completedPoints + ' / ' + totalPoints + ' รายการ</span>'
       +   '<span style="color:' + sColor + ';font-weight:600;">' + pct + '%</span>'
       + '</div>'
       + '</div>';
@@ -383,8 +390,8 @@ function renderFormsRO(forms, dataObj) {
     var f=forms[i];
     html+='<div class="qa-glass-card mb-3 p-0">'
       +'<div class="qa-form-card-head"><i class="bi bi-file-earmark-text me-2"></i>'+escHtml(f.formName)+'</div>';
-    if(f.description) html+='<div class="qa-form-card-desc"><i class="bi bi-info-circle me-2"></i>'+escHtml(f.description)+'</div>';
-    if(f.note)        html+='<div class="qa-form-card-note"><i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i><span>'+escHtml(f.note)+'</span></div>';
+    if(f.description) html+='<div class="qa-form-card-desc"><i class="bi bi-info-circle me-2"></i>'+nlToBr(f.description)+'</div>';
+    if(f.note)        html+='<div class="qa-form-card-note"><i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i><span>'+nlToBr(f.note)+'</span></div>';
     html+='<div class="p-4">'+renderFieldsRO(f.fields||[],dataObj)+'</div></div>';
   }
   return html;
@@ -518,7 +525,7 @@ function renderFieldsRO(fields, dataObj) {
     }
     if(f.type==="link"){
       var url=escHtml(String(v)), isUrl=v&&v!=="-"&&(String(v).indexOf("http://")===0||String(v).indexOf("https://")===0);
-      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+(isUrl?'<a href="'+url+'" target="_blank" class="qa-readonly-link"><i class="bi bi-box-arrow-up-right me-2"></i>'+url+'</a>':'<div class="qa-readonly-val">'+url+'</div>')+audit+'</div>'; continue;
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+(isUrl?'<a href="'+url+'" target="_blank" class="qa-readonly-link"><i class="bi bi-box-arrow-up-right me-2"></i>'+url+'</a>':'<div class="qa-readonly-val">'+nlToBr(String(v))+'</div>')+audit+'</div>'; continue;
     }
     if(f.type==="money"){
       html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div><div class="qa-readonly-money">'+_formatMoneyRO(v)+'</div>'+audit+'</div>'; continue;
@@ -527,7 +534,7 @@ function renderFieldsRO(fields, dataObj) {
       var isOn=v==="ON"||v==="Y"||v===true||v==="true";
       html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div><span class="'+(isOn?"qa-readonly-toggle-on":"qa-readonly-toggle-off")+'">'+(isOn?"✅ เปิด":"❌ ปิด")+'</span>'+audit+'</div>'; continue;
     }
-    html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div><div class="qa-readonly-val">'+escHtml(String(v))+'</div>'+audit+'</div>';
+    html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div><div class="qa-readonly-val">'+nlToBr(String(v))+'</div>'+audit+'</div>';
   }
   return html;
 }
@@ -597,7 +604,7 @@ function renderRawRO(dataObj) {
   if(normalKeys.length){
     html+='<div class="row">';
     normalKeys.forEach(function(k){
-      html+='<div class="col-md-6 mb-3"><div class="qa-label">'+escHtml(k)+'</div><div class="qa-readonly-val">'+escHtml(String(dataObj[k]||"-"))+'</div></div>';
+      html+='<div class="col-md-6 mb-3"><div class="qa-label">'+escHtml(k)+'</div><div class="qa-readonly-val">'+nlToBr(String(dataObj[k]||"-"))+'</div></div>';
     });
     html+='</div>';
   }

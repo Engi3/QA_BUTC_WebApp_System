@@ -43,6 +43,39 @@ function updateDatePreview() {
 function autoExpand(el) { el.style.height="auto"; el.style.height=el.scrollHeight+"px"; }
 function _el(id) { return document.getElementById(id); }
 
+/**
+ * Handle "Custom" option in dropdowns
+ */
+function _onSelectCustomChange(sel, customInputId) {
+  var ci = document.getElementById(customInputId);
+  if (!ci) return;
+  if (sel.value === "__custom__") {
+    ci.style.display = "block";
+    if (typeof autoExpand === "function") autoExpand(ci);
+    ci.focus();
+    ci.required = true;
+  } else {
+    ci.style.display = "none";
+    ci.required = false;
+    ci.value = "";
+  }
+}
+
+/**
+ * Toggle visibility of an element and rotate its icon
+ * @param {string} id - Element ID to toggle
+ * @param {HTMLElement} header - The header element clicked (to toggle classes)
+ */
+function toggleElement(id, header) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var isHidden = el.style.display === "none";
+  el.style.display = isHidden ? "block" : "none";
+  if (header) {
+    header.classList.toggle("collapsed", !isHidden);
+  }
+}
+
 // ── Chip Grid (3-4 col) ───────────────────────────────────────
 // ── ระบบกล่องเลือกแบบพับได้ (Accordion Chip Grid) ─────────────────────────
 // ── ระบบกล่องเลือกแบบพับได้ (Accordion Chip Grid) ─────────────────────────

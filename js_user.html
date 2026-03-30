@@ -322,8 +322,8 @@ function buildFormCard(form, section) {
   return '<form onsubmit="submitFormData(event,\''+secId+'\',\''+secName+'\',\''+fid+'\')">'
     + '<div class="qa-glass-card mb-4 p-0">'
     + '<div class="qa-form-card-head"><i class="bi bi-file-earmark-text me-2"></i>'+escHtml(form.formName)+'</div>'
-    + (form.description?'<div class="qa-form-card-desc"><i class="bi bi-info-circle me-2"></i>'+escHtml(form.description)+'</div>':"")
-    + (form.note?'<div class="qa-form-card-note"><i class="bi bi-exclamation-triangle-fill" style="flex-shrink:0;"></i><span>'+escHtml(form.note)+'</span></div>':"")
+    + (form.description?'<div class="qa-form-card-desc"><i class="bi bi-info-circle me-2"></i>'+nlToBr(form.description)+'</div>':"")
+    + (form.note?'<div class="qa-form-card-note"><i class="bi bi-exclamation-triangle-fill" style="flex-shrink:0;"></i><span>'+nlToBr(form.note)+'</span></div>':"")
     + copyBar
     + '<div style="padding:20px;">'+renderFormFields(visibleFields)+'</div>'
     + '<div class="qa-form-card-foot"><div class="d-flex gap-2">'+clearBtn+copyBtn+'</div>'
@@ -376,16 +376,63 @@ function renderOneField(field) {
     case "textarea":
       return '<div class="mb-3">'+lbl+desc+'<textarea class="qa-input" name="'+escHtml(field.key)+'" rows="2" oninput="autoExpand(this)"'+(field.required?" required":"")+'></textarea></div>';
     case "select":
-      var opts = '<option value="">-- เลือก --</option>' + (field.options||"").split(",").map(function(o){ return '<option value="'+escHtml(o.trim())+'">'+escHtml(o.trim())+'</option>'; }).join("");
-      return '<div class="mb-3">'+lbl+desc+'<select class="qa-input" name="'+escHtml(field.key)+'"'+(field.required?" required":"")+'>'+opts+'</select></div>';
+      var customId = 'custom-' + field.key;
+      var si = (field.items && field.items.length) ? field.items : [];
+      var opts = '<option value="">-- เลือก --</option>' 
+               + si.map(function(o){ return '<option value="'+escHtml(o.trim())+'">'+escHtml(o.trim())+'</option>'; }).join("");
+      
+      if (field.allowCustom) {
+        opts += '<option value="__custom__">-- กำหนดเอง (ระบุระบุรายละเอียดด้านล่าง) --</option>';
+      }
+
+      return '<div class="mb-3">'+lbl+desc
+        +'<select class="qa-input" name="'+escHtml(field.key)+'" onchange="_onSelectCustomChange(this,\''+customId+'\')"'+(field.required?" required":"")+'>'+opts+'</select>'
+        +(field.allowCustom ? '<textarea id="'+customId+'" name="'+escHtml(field.key)+'_custom" class="qa-input mt-2 auto-expand" placeholder="ระบุรายละเอียดเพิ่มเติม..." style="display:none; min-height:38px; resize:vertical;" oninput="autoExpand(this)"></textarea>' : '')
+        +'</div>';
+    case "radio":
+      var ri = (field.items && field.items.length) ? field.items : ["ตัวเลือก 1"];
+      var rcustomId = 'custom-' + field.key;
+      var rads = ri.map(function(lb,ii){
+        return '<label class="qa-radio-item"><input type="radio" name="'+escHtml(field.key)+'" value="'+escHtml(lb)+'" onchange="_onSelectCustomChange(this,\''+rcustomId+'\')"'+(field.required?" required":"")+'><span>'+nlToBr(lb)+'</span></label>';
+      }).join("");
+      if (field.allowCustom) {
+        rads += '<label class="qa-radio-item"><input type="radio" name="'+escHtml(field.key)+'" value="__custom__" onchange="_onSelectCustomChange(this,\''+rcustomId+'\')"'+(field.required?" required":"")+'><span>อื่นๆ:</span></label>'
+             + '<textarea id="'+rcustomId+'" name="'+escHtml(field.key)+'_custom" class="qa-input mt-2 auto-expand" placeholder="โปรดระบุ..." style="display:none; min-height:38px; resize:vertical;" oninput="autoExpand(this)"></textarea>';
+      }
+      return '<div class="mb-3">'+lbl+desc+'<div class="qa-radio-group">'+rads+'</div></div>';
+    case "linear-scale":
+      var min = field.scaleMin || 0, max = field.scaleMax || 5;
+      var lScale = "";
+      for(var v=min; v<=max; v++){
+        lScale += '<div class="qa-scale-box"><label>'+v+'</label><input type="radio" name="'+escHtml(field.key)+'" value="'+v+'"'+(field.required?" required":"")+'></div>';
+      }
+      return '<div class="mb-3">'+lbl+desc+'<div class="qa-scale-wrap">'
+        +(field.labelMin?'<span class="qa-scale-lbl">'+escHtml(field.labelMin)+'</span>':'')
+        +'<div class="qa-scale-row">'+lScale+'</div>'
+        +(field.labelMax?'<span class="qa-scale-lbl">'+escHtml(field.labelMax)+'</span>':'')
+        +'</div></div>';
+    case "choice-grid":
+    case "tick-grid":
+      var gRows = field.gridRows || ["แถวที่ 1"];
+      var gCols = field.gridCols || ["คอลัมน์ 1", "คอลัมน์ 2"];
+      var isTick = field.type === "tick-grid";
+      var gridHds = '<th></th>' + gCols.map(function(c){ return '<th>'+escHtml(c)+'</th>'; }).join("");
+      var gridBdy = gRows.map(function(r, ri){
+        var cells = '<td>'+escHtml(r)+'</td>' + gCols.map(function(c, ci){
+          var inputName = isTick ? escHtml(field.key)+'_r'+ri+'_c'+ci : escHtml(field.key)+'_r'+ri;
+          return '<td><input type="'+(isTick?"checkbox":"radio")+'" name="'+inputName+'" value="'+escHtml(c)+'"'+(field.required&&!isTick?" required":"")+'></td>';
+        }).join("");
+        return '<tr>'+cells+'</tr>';
+      }).join("");
+      return '<div class="mb-3">'+lbl+desc+'<div class="table-responsive"><table class="qa-grid-table"><thead><tr>'+gridHds+'</tr></thead><tbody>'+gridBdy+'</tbody></table></div></div>';
     case "checkbox-group":
       var items = field.items && field.items.length ? field.items : ["ตัวเลือก 1"];
-      var boxes = items.map(function(lb,ii){ return '<label class="qa-check-item"><input type="checkbox" name="'+escHtml(field.key)+'_item'+ii+'" value="'+escHtml(lb)+'"><span>'+escHtml(lb)+'</span></label>'; }).join("");
+      var boxes = items.map(function(lb,ii){ return '<label class="qa-check-item"><input type="checkbox" name="'+escHtml(field.key)+'_item'+ii+'" value="'+escHtml(lb)+'"><span>'+nlToBr(lb)+'</span></label>'; }).join("");
       return '<div class="mb-3">'+lbl+desc+'<div style="display:flex;flex-wrap:wrap;gap:6px;">'+boxes+'</div></div>';
     case "toggle-group":
       var titems = field.items && field.items.length ? field.items : ["ตัวเลือก 1"];
       var toggles = titems.map(function(lb,ii){
-        return '<div class="qa-toggle-row"><label class="qa-toggle-switch"><input type="checkbox" name="'+escHtml(field.key)+'_tog'+ii+'" value="ON" class="qa-toggle-chk"><span class="qa-toggle-slider"></span></label><span class="qa-toggle-label">'+escHtml(lb)+'</span></div>';
+        return '<div class="qa-toggle-row"><label class="qa-toggle-switch"><input type="checkbox" name="'+escHtml(field.key)+'_tog'+ii+'" value="ON" class="qa-toggle-chk"><span class="qa-toggle-slider"></span></label><span class="qa-toggle-label">'+nlToBr(lb)+'</span></div>';
       }).join("");
       return '<div class="mb-3">'+lbl+desc+'<div class="qa-toggle-group">'+toggles+'</div></div>';
     case "table":
@@ -448,6 +495,17 @@ function submitFormData(event, sectionId, sectionName, formId) {
   var fd = new FormData(form), dataObj = {};
   fd.forEach(function(val, key) { dataObj[key] = val; });
   form.querySelectorAll('input[type="checkbox"]').forEach(function(cb) { if (!dataObj[cb.name]) dataObj[cb.name] = ""; });
+
+  // ── จัดการค่า "กำหนดเอง" สำหรับ Dropdown (ทั้งในฟอร์มและตาราง) ──
+  Object.keys(dataObj).forEach(function(key) {
+    if (key.endsWith("_custom")) {
+      var baseKey = key.replace("_custom", "");
+      if (dataObj[baseKey] === "__custom__") {
+        dataObj[baseKey] = dataObj[key]; // เอาค่านิยามใหม่มาทับ
+      }
+      delete dataObj[key]; // ลบฟิลด์ช่วยทิ้ง
+    }
+  });
 
   var year = ((document.getElementById("user-year-select")||{}).value||"").replace(" (Admin Mode)","");
 
