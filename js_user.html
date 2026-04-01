@@ -10,51 +10,71 @@ function buildSectionCards(sections, yearData, containerId, year) {
     container.innerHTML = '<div class="col-12 text-center text-muted py-4">ไม่มี Section ที่เปิดใช้งาน</div>';
     return;
   }
-  
+
+  // รวมข้อมูลฟอร์มส่วนกลาง (GLOBAL_ key) ไว้ก่อน — ใช้ร่วมกันทุก Section
+  var sharedDataObj = {};
+  var sharedLastUpdate = null, sharedSubmitter = "";
+  yearData.forEach(function(d) {
+    if (d.sectionId && d.sectionId.indexOf("GLOBAL_") === 0 && d.dataJson) {
+      try {
+        var gd = JSON.parse(d.dataJson);
+        Object.keys(gd).forEach(function(k) { if (!(k in sharedDataObj)) sharedDataObj[k] = gd[k]; });
+      } catch(e) {}
+      if (!sharedLastUpdate && d.lastUpdate) { sharedLastUpdate = d.lastUpdate; sharedSubmitter = d.submitterName || ""; }
+    }
+  });
+  var hasSharedData = Object.keys(sharedDataObj).some(function(k){ return !k.endsWith("__by") && !k.endsWith("__at") && !k.endsWith("_total_rows") && sharedDataObj[k] !== ""; });
+
   var html = "";
   sections.forEach(function(sec) {
     var sub = null;
     for (var i = 0; i < yearData.length; i++) {
       if (yearData[i].sectionId === sec.sectionId) { sub = yearData[i]; break; }
     }
-    
+
     var isSub = !!sub;
     var dataObj = {};
     if (isSub && sub.dataJson) { try { dataObj = JSON.parse(sub.dataJson); } catch(e) {} }
-    var prog = (typeof _calcFieldProgress === 'function') ? _calcFieldProgress(sec.sectionId, APP.forms, dataObj) : { total: 0, completed: 0, pct: 0 };
+
+    // ผสานข้อมูลส่วนกลางเข้ากับข้อมูล Section (Section-specific data มีความสำคัญกว่า)
+    var mergedDataObj = {};
+    Object.keys(sharedDataObj).forEach(function(k){ mergedDataObj[k] = sharedDataObj[k]; });
+    Object.keys(dataObj).forEach(function(k){ mergedDataObj[k] = dataObj[k]; });
+
+    var prog = (typeof _calcFieldProgress === 'function') ? _calcFieldProgress(sec.sectionId, APP.forms, mergedDataObj) : { total: 0, completed: 0, pct: 0 };
     var totalForms = prog.total;
     var completedForms = prog.completed;
     var pct = prog.pct;
-    if (prog.total === 0 && isSub) pct = 100;
+    var hasAnyData = isSub || hasSharedData;
+    if (prog.total === 0 && hasAnyData) pct = 100;
 
-    // หา field ที่แก้ไขล่าสุดจาก __at metadata (field-level tracking)
+    // หา field ที่แก้ไขล่าสุดจาก __at metadata
     var latestAt = null, latestBy = null;
-    Object.keys(dataObj).forEach(function(k) {
+    Object.keys(mergedDataObj).forEach(function(k) {
       if (!k.endsWith("__at")) return;
-      var t = dataObj[k] ? new Date(dataObj[k]) : null;
+      var t = mergedDataObj[k] ? new Date(mergedDataObj[k]) : null;
       if (t && !isNaN(t.getTime()) && (!latestAt || t > latestAt)) {
         latestAt = t;
-        latestBy = dataObj[k.replace("__at", "__by")] || "";
+        latestBy = mergedDataObj[k.replace("__at", "__by")] || "";
       }
     });
-    // fallback: ใช้ข้อมูลระดับ section ถ้าไม่มี field-level metadata
-    var displayBy = latestBy || (isSub ? (sub.submitterName || "-") : "-");
-    var displayAt = latestAt ? latestAt.toISOString() : (isSub && sub.lastUpdate ? sub.lastUpdate : null);
+    var displayBy = latestBy || (isSub ? (sub.submitterName || "-") : (hasSharedData ? sharedSubmitter||"-" : "-"));
+    var displayAt = latestAt ? latestAt.toISOString() : (isSub && sub.lastUpdate ? sub.lastUpdate : (hasSharedData ? sharedLastUpdate : null));
 
     var sColor = pct === 100 ? "var(--success)" : (pct > 0 ? "var(--warning)" : "var(--danger)");
     var sTxt = pct === 100 ? "ส่งข้อมูลครบถ้วน" : (pct > 0 ? "กำลังดำเนินการ ("+pct+"%)" : "ยังไม่มีข้อมูล");
-    
+
     var hex = "#2563eb";
     if (sec.colorClass) {
-      if (sec.colorClass.indexOf("#") === 0) { hex = sec.colorClass; } 
+      if (sec.colorClass.indexOf("#") === 0) { hex = sec.colorClass; }
       else if (typeof COLORS !== 'undefined') {
         for (var c = 0; c < COLORS.length; c++) {
           if (COLORS[c].v === sec.colorClass) { hex = COLORS[c].h; break; }
         }
       }
     }
-    if(sec.customColor) hex = sec.customColor;
-    
+    if (sec.customColor) hex = sec.customColor;
+
     html += '<div class="qa-sec-card" style="border-left: 4px solid '+hex+'; padding: 16px; margin-bottom: 16px; background: var(--glass-bg); border-radius: 8px;">'
          + '<div style="display:flex; align-items:center; margin-bottom:12px;">'
          +   '<div style="width:42px;height:42px;border-radius:8px;background:'+hex+'1a;color:'+hex+';display:flex;align-items:center;justify-content:center;font-size:1.4rem;margin-right:12px;flex-shrink:0;">'
@@ -73,21 +93,30 @@ function buildSectionCards(sections, yearData, containerId, year) {
          +   '<div class="mb-1"><i class="bi bi-person-fill me-2"></i>'+escHtml(displayBy)+'</div>'
          +   '<div><i class="bi bi-clock-fill me-2"></i>'+(displayAt ? toThaiDate(displayAt, true) : "-")+'</div>'
          + '</div>';
-         
-    if (isSub) {
+
+    if (hasAnyData) {
       html += '<button class="qa-btn-ghost w-100" style="font-size:0.8rem; border:1px solid var(--border);" onclick="openViewModal(\''+sec.sectionId+'\',\''+escHtml(sec.sectionName)+'\',\''+year+'\')"><i class="bi bi-search me-1"></i> ดูข้อมูล</button>';
     } else {
       html += '<button class="qa-btn-ghost w-100" style="font-size:0.8rem; opacity:0.5; cursor:not-allowed;" disabled><i class="bi bi-lock-fill me-1"></i> รอข้อมูล</button>';
     }
     html += '</div>';
   });
-  
+
   container.style.display = "grid";
   container.style.gridTemplateColumns = "repeat(auto-fill, minmax(280px, 1fr))";
   container.style.gap = "16px";
   container.innerHTML = html;
 }
 
+
+// ตรวจว่าฟอร์มนี้เป็น "ฟอร์มส่วนกลาง" หรือไม่
+// ส่วนกลาง = ทุก field ไม่ได้จำกัด sectionIds (visible to all) → 1 ฟอร์ม ต่อ 1 ปี ไม่ใช่ต่อ Section
+function _isSharedForm(form) {
+  if (form.sectionId) return false; // form-level section assignment → section-specific
+  var fields = (form.fields || []).filter(function(f){ return f.type !== "divider"; });
+  if (!fields.length) return true;
+  return fields.every(function(f){ return !f.sectionIds || !f.sectionIds.length; });
+}
 
 function loadUserSections() {
   var yearSel = document.getElementById("user-year-select");
@@ -196,22 +225,22 @@ function loadUserSections() {
     }
     if (!matchingSec) return;
 
+    // ฟอร์มส่วนกลาง → ใช้ key "GLOBAL_formId" แทน sectionId เพื่อให้ข้อมูลเป็น 1 ชุดต่อปี
+    var isShared = _isSharedForm(form);
+    var effectiveSecId = isShared ? ("GLOBAL_" + form.formId) : matchingSec.sectionId;
+    var effectiveSecName = isShared ? form.formName : matchingSec.sectionName;
+
     // นับ field-level progress เฉพาะ Section ที่ match
-    var dashRow = dashMap[matchingSec.sectionId] || null;
+    var dashRow = dashMap[effectiveSecId] || null;
     var dataObj = {};
     if (dashRow && dashRow.dataJson) { try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) {} }
 
-    var visibleFields = (form.fields || []).filter(function(f) {
-      if (f.type === "divider") return false;
-      if (!f.sectionIds || !f.sectionIds.length) return true;
-      return f.sectionIds.indexOf(matchingSec.sectionId) >= 0;
-    });
-    var totalFields = visibleFields.length;
-    var completedFields = 0;
-    visibleFields.forEach(function(f) {
-      var v = dataObj[f.key];
-      if (v !== undefined && v !== null && v !== "") completedFields++;
-    });
+    // ใช้ _calcFieldProgress เพื่อให้สอดคล้องกัน (ไม่นับ toggle-group/checkbox-group/tick-grid/image)
+    var _sp = (typeof _calcFieldProgress === 'function')
+      ? _calcFieldProgress(effectiveSecId, [form], dataObj)
+      : { total: 0, completed: 0 };
+    var totalFields = _sp.total;
+    var completedFields = _sp.completed;
 
     var pct = totalFields > 0 ? Math.round(completedFields / totalFields * 100) : 0;
     var isComplete = totalFields > 0 && completedFields === totalFields;
@@ -220,7 +249,7 @@ function loadUserSections() {
       : '<i class="bi bi-clock-history text-warning"></i>';
 
     var fid = escHtml(form.formId);
-    var sid2 = escHtml(matchingSec.sectionId);
+    var sid2 = escHtml(effectiveSecId);
 
     tabsHtml += '<button class="qa-sidebar-btn ' + (validIndex === 0 ? 'active' : '') + '"'
       + ' data-formid="' + fid + '" data-secid="' + sid2 + '"'
@@ -239,7 +268,7 @@ function loadUserSections() {
       + '</div></div></button>';
 
     panesHtml += '<div id="form-pane-' + fid + '" style="display:' + (validIndex === 0 ? 'block' : 'none') + ';">'
-      + _buildFormPaneContent(form, matchingSec)
+      + _buildFormPaneContent(form, matchingSec, effectiveSecId, effectiveSecName)
       + '</div>';
 
     validIndex++;
@@ -252,6 +281,7 @@ function loadUserSections() {
     if (container) container.innerHTML = tabsHtml;
     if (content) {
       content.innerHTML = panesHtml;
+      _fillAllFormsWithCurrentData(dashMap);
       var firstBtn = document.querySelector('.qa-sidebar-btn[data-formid].active');
       if (firstBtn) {
         var firstFid = firstBtn.getAttribute('data-formid');
@@ -276,9 +306,9 @@ function selectUserForm(formId) {
 }
 
 // ── สร้างเนื้อหาภายใน form-pane (Copy bar + Form card) ──
-function _buildFormPaneContent(form, section) {
+function _buildFormPaneContent(form, section, effectiveSecId, effectiveSecName) {
   var fid = escHtml(form.formId);
-  var sid = escHtml(section.sectionId);
+  var sid = escHtml(effectiveSecId || section.sectionId);
 
   var html = '<div class="qa-copy-year-bar" id="copy-bar-' + fid + '" style="display:none;">'
     + '<i class="bi bi-clock-history" style="color:var(--info);font-size:1.1rem;"></i>'
@@ -288,13 +318,13 @@ function _buildFormPaneContent(form, section) {
     + '<i class="bi bi-clipboard-data me-1"></i> ดึงข้อมูลลงฟอร์ม</button>'
     + '</div>';
 
-  html += buildFormCard(form, section);
+  html += buildFormCard(form, section, effectiveSecId, effectiveSecName);
   return html;
 }
 
-function buildFormCard(form, section) {
-  var secId   = escHtml(section.sectionId);
-  var secName = escHtml(section.sectionName);
+function buildFormCard(form, section, effectiveSecId, effectiveSecName) {
+  var secId   = escHtml(effectiveSecId   || section.sectionId);
+  var secName = escHtml(effectiveSecName || section.sectionName);
   var fid     = escHtml(form.formId);
 
   var clearBtn = APP.activeRole === "admin_acting_as_user"
@@ -319,7 +349,7 @@ function buildFormCard(form, section) {
   var copyBtn = '<button type="button" class="qa-btn-ghost btn-sm" onclick="checkAvailableYearsToCopy(\''+secId+'\',\''+fid+'\')">'
     + '<i class="bi bi-clock-history me-1"></i>ดึงข้อมูลจากปีการศึกษาอื่น</button>';
 
-  return '<form onsubmit="submitFormData(event,\''+secId+'\',\''+secName+'\',\''+fid+'\')">'
+  return '<form data-secid="'+secId+'" data-formid="'+fid+'" onsubmit="submitFormData(event,\''+secId+'\',\''+secName+'\',\''+fid+'\')">'
     + '<div class="qa-glass-card mb-4 p-0">'
     + '<div class="qa-form-card-head"><i class="bi bi-file-earmark-text me-2"></i>'+escHtml(form.formName)+'</div>'
     + (form.description?'<div class="qa-form-card-desc"><i class="bi bi-info-circle me-2"></i>'+nlToBr(form.description)+'</div>':"")
@@ -338,6 +368,12 @@ function renderFormFields(fields) {
 
 function renderOneField(field) {
   if (!field || !field.type) return "";
+  // Guard: ถ้า field.key ว่างเปล่า แสดง warning แทนการ render input ที่ name="" (ข้อมูลจะไม่ถูกบันทึก)
+  if (!field.key && field.type !== "divider" && field.type !== "image") {
+    return '<div class="mb-3" style="border:1.5px dashed var(--warning);border-radius:var(--r-sm);padding:8px 12px;">'
+      +'<span style="font-size:.78rem;color:var(--warning);"><i class="bi bi-exclamation-triangle-fill me-1"></i>'
+      +'ฟิลด์ "'+escHtml(field.label||"(ไม่มีชื่อ)")+'" ยังไม่มี key — กรุณาให้ Admin เปิดฟอร์มนี้และบันทึกใหม่อีกครั้ง</span></div>';
+  }
 
   // Divider ไม่มี owner badge
   if (field.type === "divider") {
@@ -477,11 +513,57 @@ function addDynRow(fieldKey, colCount) {
 function fillFormData(container, dataObj) {
   if (!dataObj) return;
   Object.keys(dataObj).forEach(function(key) {
+    if (key.endsWith("__by") || key.endsWith("__at") || key.endsWith("_total_rows")) return;
     container.querySelectorAll('[name="'+key+'"]').forEach(function(el) {
-      if (el.type === "checkbox") el.checked = (dataObj[key]==="Y"||dataObj[key]===true||dataObj[key]==="ON"||el.value===dataObj[key]);
-      else el.value = dataObj[key];
-      if (el.tagName === "TEXTAREA") autoExpand(el);
+      if (el.type === "radio") el.checked = (String(el.value) === String(dataObj[key]));
+      else if (el.type === "checkbox") el.checked = (dataObj[key]==="Y"||dataObj[key]===true||dataObj[key]==="ON"||String(el.value)===String(dataObj[key]));
+      else { el.value = dataObj[key]; if (el.tagName === "TEXTAREA") autoExpand(el); }
     });
+    // Handle select with allowCustom: if saved value not in options, use __custom__ + fill textarea
+    container.querySelectorAll('select[name="'+key+'"]').forEach(function(sel) {
+      var found = false;
+      for (var i=0; i<sel.options.length; i++) { if (sel.options[i].value === dataObj[key]) { found=true; break; } }
+      if (!found && dataObj[key]) {
+        sel.value = "__custom__";
+        var customTa = container.querySelector('#custom-'+key);
+        if (customTa) { customTa.value = dataObj[key]; customTa.style.display="block"; autoExpand(customTa); }
+      }
+    });
+  });
+}
+
+function _fillAllFormsWithCurrentData(dashMap) {
+  if (!dashMap) return;
+  document.querySelectorAll('[id^="form-pane-"] form[data-secid]').forEach(function(formEl) {
+    var secId = formEl.getAttribute('data-secid');
+    var dashRow = dashMap[secId];
+    if (!dashRow || !dashRow.dataJson) return;
+    var dataObj = {};
+    try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) { return; }
+    fillFormData(formEl, dataObj);
+    // Add "last edited" badge to form header
+    var latestAt = null, latestBy = "";
+    Object.keys(dataObj).forEach(function(k) {
+      if (!k.endsWith("__at")) return;
+      var t = dataObj[k] ? new Date(dataObj[k]) : null;
+      if (t && !isNaN(t.getTime()) && (!latestAt || t > latestAt)) {
+        latestAt = t;
+        latestBy = dataObj[k.replace("__at","__by")] || "";
+      }
+    });
+    var at = latestAt ? latestAt.toISOString() : (dashRow.lastUpdate || null);
+    var by = latestBy || dashRow.submitterName || "";
+    if (at) {
+      var headEl = formEl.querySelector('.qa-form-card-head');
+      if (headEl && !headEl.querySelector('.qa-prefill-badge')) {
+        headEl.insertAdjacentHTML('beforeend',
+          '<span class="qa-prefill-badge" style="font-size:0.7rem;font-weight:400;opacity:0.75;margin-left:8px;">'
+          + '<i class="bi bi-pencil-square me-1"></i>แก้ไขล่าสุด: '
+          + (typeof toThaiDate==="function" ? toThaiDate(at,true) : at)
+          + (by ? ' โดย '+escHtml(by) : '')
+          + '</span>');
+      }
+    }
   });
 }
 
@@ -530,7 +612,7 @@ function submitFormData(event, sectionId, sectionName, formId) {
           ? document.querySelector('[data-formid="'+formId+'"]')
           : document.querySelector('[data-secid="'+sectionId+'"]');
         if (navBtn) navBtn.classList.add("done");
-        google.script.run.withSuccessHandler(function(r){ if(r&&r.success){APP.dashboard=r.data;renderPublicDashboard();} }).fetchDashboardData();
+        google.script.run.withSuccessHandler(function(r){ if(r&&r.success){APP.dashboard=r.data;renderPublicDashboard();loadUserSections();} }).fetchDashboardData();
         setTimeout(function() {
           if (btn) { btn.disabled=false; btn.classList.replace("qa-btn-success","qa-btn-primary"); btn.innerHTML=origHtml; }
         }, 2500);
@@ -569,7 +651,7 @@ function confirmClearData() {
   google.script.run
     .withSuccessHandler(function(res){
       if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-trash-fill me-1"></i>ยืนยัน';}
-      if(res&&res.success){ showToast("ล้างข้อมูลสำเร็จ","success"); var mi=bootstrap.Modal.getInstance(document.getElementById("modal-clear-data")); if(mi)mi.hide(); google.script.run.withSuccessHandler(function(r){if(r&&r.success){APP.dashboard=r.data;renderPublicDashboard();if(APP.activeRole==="admin_acting_as_user")loadUserSections();}}).fetchDashboardData(); }
+      if(res&&res.success){ showToast("ล้างข้อมูลสำเร็จ","success"); var mi=bootstrap.Modal.getInstance(document.getElementById("modal-clear-data")); if(mi)mi.hide(); var clearedForm=document.querySelector('form[data-secid="'+secId+'"]'); if(clearedForm){clearedForm.reset(); var hd=clearedForm.querySelector('.qa-prefill-badge'); if(hd)hd.remove();} google.script.run.withSuccessHandler(function(r){if(r&&r.success){APP.dashboard=r.data;renderPublicDashboard();loadUserSections();}}).fetchDashboardData(); }
       else showToast((res&&res.message)||"ล้างไม่สำเร็จ","danger");
     })
     .withFailureHandler(function(err){if(btn){btn.disabled=false;btn.innerHTML='<i class="bi bi-trash-fill me-1"></i>ยืนยัน';}showToast(err.message||err,"danger");})

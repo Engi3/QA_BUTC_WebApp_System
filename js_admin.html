@@ -380,7 +380,8 @@ function renderUsersTable(data) {
     });
     var sn = activeSecs.map(function(sid) { for(var i=0;i<APP.sections.length;i++){if(APP.sections[i].sectionId===sid)return APP.sections[i].sectionName;} return sid; }).join(", ")||"-";
     
-    html += '<tr><td style="color:var(--txt);">'+escHtml(u.prefix+u.fname+" "+u.lname)+'<br><small style="color:var(--txt-muted);"><i class="bi bi-folder me-1"></i>'+escHtml(sn)+'</small></td><td style="color:var(--txt-muted);font-size:.82rem;">'+escHtml(u.email)+'</td><td><span class="qa-role-tag user">User</span></td>'
+    var authBadge = (u.authType && u.authType !== "SSO_GOOGLE") ? ' <span style="font-size:.65rem;background:var(--info-l);color:var(--info);padding:1px 6px;border-radius:10px;vertical-align:middle;">Admin Added</span>' : '';
+    html += '<tr><td style="color:var(--txt);">'+escHtml(u.prefix+u.fname+" "+u.lname)+authBadge+'<br><small style="color:var(--txt-muted);"><i class="bi bi-folder me-1"></i>'+escHtml(sn)+'</small></td><td style="color:var(--txt-muted);font-size:.82rem;">'+escHtml(u.email)+'</td><td><span class="qa-role-tag user">User</span></td>'
       +'<td><button class="qa-btn-ghost btn-sm me-1" data-email="'+escHtml(u.email)+'" data-prefix="'+escHtml(u.prefix)+'" data-fname="'+escHtml(u.fname)+'" data-lname="'+escHtml(u.lname)+'" data-phone="'+escHtml(u.phone)+'" data-positions="'+escHtml(JSON.stringify(u.positions||[]))+'" data-sections="'+escHtml(JSON.stringify(u.sections||[]))+'" data-role="user" data-perm="" onclick="_editUserBtn(this)"><i class="bi bi-pencil-square"></i></button>'
       +'<button class="qa-btn-danger btn-sm" data-del-type="user-user" data-del-id="'+escHtml(u.email)+'" data-del-name="'+escHtml(u.prefix+u.fname+" "+u.lname)+'" onclick="_delBtn(this)"><i class="bi bi-trash"></i></button></td></tr>';
   });
@@ -1226,7 +1227,7 @@ function editForm(formId) {
   if (document.getElementById("form-desc")) { document.getElementById("form-desc").value = form.description||""; autoExpand(document.getElementById("form-desc")); }
   if (document.getElementById("form-note")) { document.getElementById("form-note").value = form.note||""; autoExpand(document.getElementById("form-note")); }
   if (typeof _fbFields!=="undefined") {
-    _fbFields = (form.fields||[]).map(function(f){return {id:"f"+Date.now()+Math.random().toString(36).slice(2,5),type:f.type||"text",label:f.label||"",required:!!f.required,desc:f.desc||"",placeholder:f.placeholder||"",options:f.options||"",columns:f.columns||"",sectionIds:f.sectionIds||[],items:f.items||[],imageData:f.imageData||"",tableDef:f.tableDef||null};});
+    _fbFields = (form.fields||[]).map(function(f){return {id:"f"+Date.now()+Math.random().toString(36).slice(2,5),key:f.key||"",type:f.type||"text",label:f.label||"",required:!!f.required,desc:f.desc||"",placeholder:f.placeholder||"",options:f.options||"",columns:f.columns||"",sectionIds:f.sectionIds||[],items:f.items||[],imageData:f.imageData||"",tableDef:f.tableDef||null};});
     if (typeof _fbRenderAll==="function")     _fbRenderAll();
     if (typeof _fbUpdatePreview==="function") _fbUpdatePreview();
   }
@@ -1433,6 +1434,152 @@ function downloadAuditLog() {
       showToast(err.message||err,"danger");
     })
     .getAuditLog(3000);
+}
+
+// ============================================================
+// MAINTENANCE MODULE — Admin UI Functions
+// ============================================================
+
+function populateArchiveYearSelect() {
+  var sel = document.getElementById("archive-year-select");
+  if (!sel) return;
+  var years = (APP.settings || []).map(function(s) { return s.year; }).filter(Boolean);
+  years.sort(function(a,b){ return Number(a)-Number(b); });
+  sel.innerHTML = '<option value="">-- เลือกปีที่ต้องการ Archive --</option>';
+  years.forEach(function(y) {
+    var opt = document.createElement("option");
+    opt.value = y; opt.textContent = "ปีการศึกษา " + y;
+    sel.appendChild(opt);
+  });
+}
+
+function loadDatabaseStats() {
+  var el = document.getElementById("db-stats-result");
+  if (el) el.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-info"></div> กำลังตรวจสอบ...</div>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!el) return;
+      if (!res || !res.success) { el.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+(res&&res.message||"ไม่สำเร็จ")+'</span></div>'; return; }
+      var pct = res.usagePercent;
+      var barColor = pct < 50 ? "var(--success)" : pct < 75 ? "var(--warning)" : "var(--danger)";
+      var html = '<div class="mb-3">';
+      html += '<div class="d-flex justify-content-between mb-1"><span class="fw-700">การใช้งานรวม</span><span class="fw-700">' + res.totalCells.toLocaleString() + ' / 10,000,000 cells (' + pct + '%)</span></div>';
+      html += '<div style="height:12px;background:var(--qa-border-light);border-radius:6px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+barColor+';transition:width .5s;border-radius:6px;"></div></div></div>';
+      html += '<div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:0.85rem;">';
+      html += '<thead><tr><th>Sheet</th><th class="text-end">Rows</th><th class="text-end">Cols</th><th class="text-end">Cells</th></tr></thead><tbody>';
+      (res.sheets || []).forEach(function(s) {
+        var rowColor = s.cells > 100000 ? 'style="color:var(--danger);font-weight:700;"' : s.cells > 10000 ? 'style="color:var(--warning);"' : '';
+        html += '<tr '+rowColor+'><td>'+escHtml(s.name)+'</td><td class="text-end">'+s.rows.toLocaleString()+'</td><td class="text-end">'+s.cols+'</td><td class="text-end">'+s.cells.toLocaleString()+'</td></tr>';
+      });
+      html += '</tbody></table></div>';
+      el.innerHTML = html;
+    })
+    .withFailureHandler(function(err) {
+      if (el) el.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml(err.message||err)+'</span></div>';
+    })
+    .getDatabaseStats();
+}
+
+function runCompressVisits(btn) {
+  if (!confirm("บีบอัดข้อมูล tb_visits เก่าเป็น Daily Summary?\n\nข้อมูลจะไม่สูญหาย แต่ row count จะลดลงมาก")) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>กำลังบีบอัด...'; }
+  var r = document.getElementById("compress-visits-result");
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>บีบอัดข้อมูลการเข้าชม'; }
+      if (!r) return;
+      if (res && res.success) r.innerHTML = '<div class="qa-alert qa-alert-success"><i class="bi bi-check-circle-fill"></i><span>'+escHtml(res.message||"สำเร็จ")+'</span></div>';
+      else r.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml((res&&res.message)||"ไม่สำเร็จ")+'</span></div>';
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>บีบอัดข้อมูลการเข้าชม'; }
+      if (r) r.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml(err.message||err)+'</span></div>';
+    })
+    .compressOldVisits();
+}
+
+function runPruneAudit(btn) {
+  var days = parseInt(document.getElementById("audit-keep-days").value) || 90;
+  if (!confirm("ลบ Audit Log ที่เก่ากว่า " + days + " วัน?\n\nข้อมูลที่ลบแล้วจะไม่สามารถกู้คืนได้")) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>กำลังลบ...'; }
+  var r = document.getElementById("prune-audit-result");
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-trash3-fill me-1"></i>ลบ Audit Log เก่า'; }
+      if (!r) return;
+      if (res && res.success) r.innerHTML = '<div class="qa-alert qa-alert-success"><i class="bi bi-check-circle-fill"></i><span>'+escHtml(res.message||"สำเร็จ")+'</span></div>';
+      else r.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml((res&&res.message)||"ไม่สำเร็จ")+'</span></div>';
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-trash3-fill me-1"></i>ลบ Audit Log เก่า'; }
+      if (r) r.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml(err.message||err)+'</span></div>';
+    })
+    .pruneAuditLog(days);
+}
+
+function runCleanupExports(btn) {
+  var days = parseInt(document.getElementById("export-keep-days").value) || 60;
+  if (!confirm("ลบ Export Sheets ที่เก่ากว่า " + days + " วัน?\n\nSheets เหล่านี้จะถูกลบถาวร")) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>กำลังลบ...'; }
+  var r = document.getElementById("cleanup-exports-result");
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-trash-fill me-1"></i>ลบ Export Sheets เก่า'; }
+      if (!r) return;
+      if (res && res.success) r.innerHTML = '<div class="qa-alert qa-alert-success"><i class="bi bi-check-circle-fill"></i><span>'+escHtml(res.message||"สำเร็จ")+'</span></div>';
+      else r.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml((res&&res.message)||"ไม่สำเร็จ")+'</span></div>';
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-trash-fill me-1"></i>ลบ Export Sheets เก่า'; }
+      if (r) r.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml(err.message||err)+'</span></div>';
+    })
+    .cleanupExportSheets(days);
+}
+
+function handleArchiveYear(btn) {
+  var sel = document.getElementById("archive-year-select");
+  var year = sel ? sel.value : "";
+  if (!year) { showToast("กรุณาเลือกปีที่ต้องการ Archive","warning"); return; }
+  if (!confirm("Archive ข้อมูลปี " + year + "?\n\nข้อมูลจะถูกย้ายออกจาก Sheet หลักไปยัง QA_BUTC_Archive_" + year + "\nการกระทำนี้ไม่สามารถย้อนกลับได้")) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>กำลัง Archive...'; }
+  var r = document.getElementById("archive-year-result");
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-box-arrow-in-right me-1"></i>Archive ปีนี้'; }
+      if (!r) return;
+      if (res && res.success) r.innerHTML = '<div class="qa-alert qa-alert-success"><i class="bi bi-check-circle-fill"></i><div>'+escHtml(res.message||"สำเร็จ")+'<br><a href="'+escHtml(res.archiveUrl||"")+"\" target=\"_blank\" class=\"qa-btn-success btn-sm d-inline-flex mt-2\"><i class='bi bi-box-arrow-up-right me-1'></i>เปิด Archive Spreadsheet</a></div></div>";
+      else r.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml((res&&res.message)||"ไม่สำเร็จ")+'</span></div>';
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-box-arrow-in-right me-1"></i>Archive ปีนี้'; }
+      if (r) r.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml(err.message||err)+'</span></div>';
+    })
+    .archiveYearData(year);
+}
+
+function runAllMaintenance(btn) {
+  if (!confirm("รัน Maintenance ทั้งหมด?\n• บีบอัด tb_visits\n• ลบ Audit Log เก่ากว่า 90 วัน\n• ลบ Export Sheets เก่ากว่า 60 วัน")) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>กำลังรัน...'; }
+  var r = document.getElementById("run-all-result");
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>รัน Maintenance ทั้งหมด'; }
+      if (!r) return;
+      var v = res.compressVisits || {}, a = res.pruneAudit || {}, e = res.cleanupExports || {};
+      var html = '<div class="qa-alert qa-alert-success"><i class="bi bi-check-circle-fill"></i>';
+      html += '<div><strong>Maintenance เสร็จสิ้น</strong><ul class="mb-0 mt-1" style="font-size:0.85rem;">';
+      html += '<li>Visits: ' + escHtml(v.message || JSON.stringify(v)) + '</li>';
+      html += '<li>Audit: ' + escHtml(a.message || JSON.stringify(a)) + '</li>';
+      html += '<li>Exports: ' + escHtml(e.message || JSON.stringify(e)) + '</li>';
+      html += '</ul></div></div>';
+      r.innerHTML = html;
+      loadDatabaseStats();
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>รัน Maintenance ทั้งหมด'; }
+      if (r) r.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml(err.message||err)+'</span></div>';
+    })
+    .runMonthlyMaintenance();
 }
 
 </script>

@@ -648,7 +648,8 @@ function _renderEnhancedTableRO(field, dataObj) {
   if (!td || !td.cols || !td.cols.length) {
     return _renderTableRO(field.label, field.key, field.columns||"", dataObj);
   }
-  var fkey = field.key;
+  var fkey = field.key || "";
+  if (!fkey) return '<div class="mb-3"><div class="qa-label">'+(field.label||"ตาราง")+'</div><p style="color:var(--txt-muted);font-size:.82rem;">ไม่สามารถแสดงตาราง (key ไม่ถูกต้อง)</p></div>';
   var hasNumCol = td.cols.some(function(c){return c.type==="number"||c.type==="money"||c.type==="formula";});
   var showRowTotal = td.hasRowTotal && hasNumCol;
   var showColTotal = td.hasColTotal && hasNumCol;

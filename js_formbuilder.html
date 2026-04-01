@@ -18,7 +18,7 @@ function _fbLoadForm(formId) {
   if (document.getElementById("form-note")) { document.getElementById("form-note").value = form.note||""; autoExpand(document.getElementById("form-note")); }
 
   _fbFields = (form.fields||[]).map(function(f) {
-    return { id:_fbId(), type:f.type||"text", label:f.label||"", required:!!f.required,
+    return { id:_fbId(), key:f.key||"", type:f.type||"text", label:f.label||"", required:!!f.required,
       desc:f.desc||"", placeholder:f.placeholder||"", options:f.options||"",
       columns:f.columns||"", sectionIds:f.sectionIds||[], items:f.items||[],
       allowCustom:!!f.allowCustom, imageData:f.imageData||"", tableDef:f.tableDef||null,
@@ -34,7 +34,7 @@ function _fbLoadForm(formId) {
 }
 
 function fbAddField() {
-  _fbFields.push({ id:_fbId(), type:"text", label:"", required:false, desc:"",
+  _fbFields.push({ id:_fbId(), key:"fld_"+Date.now()+Math.random().toString(36).slice(2,5), type:"text", label:"", required:false, desc:"",
     placeholder:"", options:"", columns:"", sectionIds:[], items:[], allowCustom:false, imageData:"", tableDef:null,
     scaleMin:0, scaleMax:5, labelMin:"", labelMax:"", gridRows:["แถวที่ 1"], gridCols:["คอลัมน์ 1", "คอลัมน์ 2"] });
   _fbRenderAll(); 
@@ -47,7 +47,7 @@ function fbCopyField(fid) {
   var src=null, idx=-1;
   for(var i=0;i<_fbFields.length;i++){if(_fbFields[i].id===fid){src=_fbFields[i];idx=i;break;}}
   if(!src) return;
-  var clone = JSON.parse(JSON.stringify(src)); clone.id=_fbId(); clone.label+=" (สำเนา)";
+  var clone = JSON.parse(JSON.stringify(src)); clone.id=_fbId(); clone.key="fld_"+Date.now()+Math.random().toString(36).slice(2,5); clone.label+=" (สำเนา)";
   _fbFields.splice(idx+1,0,clone); 
   _fbRenderAll(); 
   _fbUpdatePreview();
@@ -465,7 +465,13 @@ function _fbUpdatePreview() {
 
 function _fbCollect() {
   _fbSync();
-  return JSON.parse(JSON.stringify(_fbFields)).filter(function(f){return f.label||f.type==="divider"||f.type==="image";});
+  var ts = Date.now();
+  return JSON.parse(JSON.stringify(_fbFields))
+    .filter(function(f){return f.label||f.type==="divider"||f.type==="image";})
+    .map(function(f, fi) {
+      if (!f.key) f.key = "fld_" + (ts + fi) + Math.random().toString(36).slice(2,5);
+      return f;
+    });
 }
 
 function clearFormBuilder() {

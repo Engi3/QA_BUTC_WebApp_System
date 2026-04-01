@@ -180,15 +180,6 @@ function verifyGoogleWorkspaceIdentity() {
       };
     }
 
-    if (!activeEmail.endsWith("@butc.ac.th")) {
-      return {
-        status: "wrong_domain",
-        email:  activeEmail,
-        url:    switchUrl,
-        switchUrl: switchUrl // ✅ ส่งไปให้หน้าเว็บ
-      };
-    }
-
     // ตรวจสอบ Admin
     const adminSheet = ensureSheetExists("tb_admins");
     const admins     = adminSheet.getDataRange().getValues();
@@ -270,8 +261,11 @@ function verifyGoogleWorkspaceIdentity() {
       }
     }
 
-    // ✅ บรรทัดสุดท้าย (กรณีไม่พบผู้ใช้ในระบบเลย) ให้ส่ง switchUrl กลับไปด้วย
-    return { status: "unregistered", email: activeEmail, switchUrl: switchUrl };
+    // ไม่พบผู้ใช้ในระบบ: @butc.ac.th → ลงทะเบียนเองได้, อื่นๆ → ต้องให้ Admin เพิ่ม
+    if (activeEmail.endsWith("@butc.ac.th")) {
+      return { status: "unregistered", email: activeEmail, switchUrl: switchUrl };
+    }
+    return { status: "wrong_domain", email: activeEmail, url: switchUrl, switchUrl: switchUrl };
 
   } catch(error) {
     return { status: "error", message: "System Error: " + error.toString() };
@@ -758,6 +752,7 @@ function getAllUsers() {
       try { sections  = uData[i][7] ? JSON.parse(uData[i][7]) : []; } catch(e) {}
       result.users.push({
         email:     uData[i][0],
+        authType:  uData[i][1] || 'SSO_GOOGLE',
         prefix:    uData[i][2],
         fname:     uData[i][3],
         lname:     uData[i][4],
@@ -873,7 +868,7 @@ function savePersonnel(data) {
     _clearAppCache();
     const adminEmail = Session.getActiveUser().getEmail();
     const email = data.email.trim();
-    if (!email.endsWith("@butc.ac.th")) return { success: false, message: "อนุญาตเฉพาะ @butc.ac.th เท่านั้น" };
+    if (!email || !email.includes("@")) return { success: false, message: "รูปแบบอีเมลไม่ถูกต้อง" };
 
     const positions = data.positions || [];
     const isManager = positions.includes("ผู้บริหาร");
@@ -888,8 +883,9 @@ function savePersonnel(data) {
       const mSheet = ensureSheetExists("tb_managers");
       mSheet.appendRow([email, data.prefix, data.fname, data.lname, data.phone, sectionsStr, new Date(), permission, positionsStr]);
     } else {
+      const authType = email.endsWith("@butc.ac.th") ? "SSO_GOOGLE" : "ADMIN_ADDED";
       const uSheet = ensureSheetExists("tb_users");
-      uSheet.appendRow([email, "SSO_GOOGLE", data.prefix, data.fname, data.lname, data.phone, positionsStr, sectionsStr, new Date()]);
+      uSheet.appendRow([email, authType, data.prefix, data.fname, data.lname, data.phone, positionsStr, sectionsStr, new Date()]);
     }
 
     writeAuditLog(adminEmail, "SAVE_PERSONNEL", email, isManager ? "Manager" : "User");
@@ -1385,11 +1381,26 @@ function getVisitStats() {
     const data = sh.getDataRange().getValues();
     let total = 0, today = 0;
     const uniq = new Set();
-    const todayStr = new Date().toDateString();
-    for (let i = 1; i < data.length; i++) {
-      total++;
-      if (data[i][2] && data[i][2] !== "guest") uniq.add(String(data[i][2]));
-      if (data[i][0] instanceof Date && data[i][0].toDateString() === todayStr) today++;
+    const tz = Session.getScriptTimeZone();
+    const todayKey = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
+
+    // tb_visits ไม่มี header row → เริ่มจาก i=0
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][1] === "daily_agg") {
+        const count = Number(data[i][2]) || 0;
+        total += count;
+        if (String(data[i][0]) === todayKey) today += count;
+        try {
+          JSON.parse(data[i][3] || "[]").forEach(u => { if (u) uniq.add(u); });
+        } catch(e) {}
+      } else {
+        // raw row (backward compatible)
+        total++;
+        if (data[i][2] && data[i][2] !== "guest") uniq.add(String(data[i][2]));
+        if (data[i][0] instanceof Date) {
+          if (Utilities.formatDate(data[i][0], tz, "yyyy-MM-dd") === todayKey) today++;
+        }
+      }
     }
     return { total, uniqueUsers: uniq.size, today };
   } catch(e) {
@@ -1397,9 +1408,31 @@ function getVisitStats() {
   }
 }
 
+/**
+ * [OPTIMIZED] บันทึกการเข้าชมแบบ Daily Aggregate
+ * tb_visits ไม่มี header → loop เริ่มจาก i=0
+ */
 function recordVisit(type, email) {
   try {
-    ensureSheetExists("tb_visits").appendRow([new Date(), type||"view", email||"guest", "", ""]);
+    const sh       = ensureSheetExists("tb_visits");
+    const tz       = Session.getScriptTimeZone();
+    const todayKey = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
+    const data     = sh.getDataRange().getValues();
+
+    // tb_visits ไม่มี header row → เริ่มจาก i=0
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][1] === "daily_agg" && String(data[i][0]) === todayKey) {
+        const newCount = (Number(data[i][2]) || 0) + 1;
+        let uniqueSet = new Set();
+        try { uniqueSet = new Set(JSON.parse(data[i][3] || "[]")); } catch(e) {}
+        if (email && email !== "guest") uniqueSet.add(email);
+        sh.getRange(i + 1, 3, 1, 2).setValues([[newCount, JSON.stringify(Array.from(uniqueSet))]]);
+        return;
+      }
+    }
+
+    const uniqueArr = (email && email !== "guest") ? JSON.stringify([email]) : "[]";
+    sh.appendRow([todayKey, "daily_agg", 1, uniqueArr, ""]);
   } catch(e) {}
 }
 
@@ -2000,4 +2033,329 @@ function deleteDepartment(deptId) {
     }
     return { success: false, message: "ไม่พบ Department" };
   } catch(e) { return { success: false, message: e.toString() }; }
+}
+
+// ============================================================
+// 13. MAINTENANCE MODULE
+// ระบบดูแลรักษาฐานข้อมูลอัตโนมัติ — ป้องกัน Google Sheet เกิน 10 ล้าน Cell
+// ใช้งาน: เรียก setupMaintenanceTriggers() ครั้งเดียวจาก Apps Script Editor
+// ============================================================
+
+/**
+ * ดูสถิติขนาดของแต่ละ Sheet (สำหรับ Admin)
+ * แสดงจำนวน rows, cols, cells และ % การใช้งาน
+ */
+function getDatabaseStats() {
+  try {
+    const ss = getOrCreateSpreadsheet();
+    const sheets = ss.getSheets();
+    const stats = [];
+    let totalCells = 0;
+
+    sheets.forEach(sheet => {
+      const rows  = sheet.getLastRow();
+      const cols  = sheet.getLastColumn();
+      const cells = rows * cols;
+      totalCells += cells;
+      stats.push({ name: sheet.getName(), rows, cols, cells });
+    });
+
+    stats.sort((a, b) => b.cells - a.cells);
+    const LIMIT = 10000000;
+    return {
+      success:      true,
+      totalCells,
+      limitCells:   LIMIT,
+      usagePercent: Math.round((totalCells / LIMIT) * 1000) / 10,
+      sheets:       stats
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * บีบอัดข้อมูล tb_visits เก่า (raw format) ให้เป็น daily summary
+ * [BATCH MODE] เขียนทับทั้ง sheet + ลบแถวส่วนเกิน — เร็วกว่า deleteRow ทีละแถวมาก
+ * tb_visits ไม่มี header row
+ */
+function compressOldVisits() {
+  try {
+    const sh   = ensureSheetExists("tb_visits");
+    const data = sh.getDataRange().getValues();
+    const tz   = Session.getScriptTimeZone();
+
+    // แยก existing daily_agg rows และ raw rows
+    const aggMap  = {}; // dateKey → { count, users: Set }
+    let   rawCount = 0;
+
+    for (let i = 0; i < data.length; i++) { // i=0: no header
+      if (data[i][1] === "daily_agg") {
+        // Merge existing agg rows ด้วย (กรณีมี duplicate daily_agg)
+        const dk = String(data[i][0]);
+        if (!aggMap[dk]) aggMap[dk] = { count: 0, users: new Set() };
+        aggMap[dk].count += Number(data[i][2]) || 0;
+        try { JSON.parse(data[i][3] || "[]").forEach(u => { if (u) aggMap[dk].users.add(u); }); } catch(e) {}
+      } else {
+        // raw row → aggregate
+        rawCount++;
+        let dateKey;
+        if (data[i][0] instanceof Date) {
+          dateKey = Utilities.formatDate(data[i][0], tz, "yyyy-MM-dd");
+        } else {
+          dateKey = String(data[i][0]).substring(0, 10);
+        }
+        if (!dateKey || dateKey.length < 8) continue;
+        if (!aggMap[dateKey]) aggMap[dateKey] = { count: 0, users: new Set() };
+        aggMap[dateKey].count++;
+        if (data[i][2] && data[i][2] !== "guest") aggMap[dateKey].users.add(String(data[i][2]));
+      }
+    }
+
+    if (rawCount === 0) {
+      return { success: true, message: "ไม่มีข้อมูลเก่าที่ต้องบีบอัด — ระบบพร้อมแล้ว" };
+    }
+
+    // สร้าง final rows เรียงตามวันที่
+    const finalRows = Object.entries(aggMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([dk, { count, users }]) => [dk, "daily_agg", count, JSON.stringify(Array.from(users)), ""]);
+
+    // [BATCH] เขียนทับ sheet ทั้งหมด
+    sh.clearContents();
+    if (finalRows.length > 0) {
+      sh.getRange(1, 1, finalRows.length, 5).setValues(finalRows);
+    }
+    // ลบแถวส่วนเกิน (ลด cell count จริง)
+    const totalRows = sh.getMaxRows();
+    const keepRows  = Math.max(finalRows.length, 1);
+    if (totalRows > keepRows) {
+      sh.deleteRows(keepRows + 1, totalRows - keepRows);
+    }
+
+    writeAuditLog(
+      Session.getActiveUser().getEmail(),
+      "MAINTENANCE", "tb_visits",
+      "Compressed " + rawCount + " raw rows → " + finalRows.length + " daily summaries"
+    );
+    return {
+      success:   true,
+      deleted:   rawCount,
+      summaries: finalRows.length,
+      message:   "บีบอัดสำเร็จ: ลบ " + rawCount + " rows → เหลือ " + finalRows.length + " daily summaries"
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * ลบ Audit Log เก่าที่เกิน keepDays วัน
+ * [BATCH MODE] เขียนทับ sheet + ลบแถวส่วนเกิน — เร็วกว่า deleteRow ทีละแถวมาก
+ * @param {number} keepDays - จำนวนวันที่จะเก็บไว้ (default: 90)
+ */
+function pruneAuditLog(keepDays) {
+  try {
+    const days   = keepDays || 90;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+
+    const sh   = ensureSheetExists("tb_audit");
+    const data = sh.getDataRange().getValues();
+    if (data.length <= 1) return { success: true, deleted: 0, message: "ไม่มีข้อมูลที่ต้องลบ" };
+
+    const header   = data[0];
+    const keepRows = [header];
+    let   deleted  = 0;
+
+    for (let i = 1; i < data.length; i++) {
+      const ts = data[i][0];
+      if (ts instanceof Date && ts < cutoff) {
+        deleted++;
+      } else {
+        keepRows.push(data[i]);
+      }
+    }
+
+    if (deleted === 0) {
+      return { success: true, deleted: 0, message: "ไม่มี Audit Log เก่ากว่า " + days + " วัน" };
+    }
+
+    // [BATCH] เขียนทับ sheet ทั้งหมด
+    sh.clearContents();
+    sh.getRange(1, 1, keepRows.length, header.length).setValues(keepRows);
+    sh.getRange(1, 1, 1, header.length).setBackground('#1a237e').setFontColor('#ffffff').setFontWeight('bold');
+    sh.setFrozenRows(1);
+
+    // ลบแถวส่วนเกิน (ลด cell count จริง)
+    const totalRows = sh.getMaxRows();
+    const keepCount = Math.max(keepRows.length, 1);
+    if (totalRows > keepCount) {
+      sh.deleteRows(keepCount + 1, totalRows - keepCount);
+    }
+
+    return {
+      success: true,
+      deleted: deleted,
+      message: "ลบ Audit Log เก่า " + deleted + " rows (เก่ากว่า " + days + " วัน)"
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * ลบ Export Sheets ที่ชื่อ "Export_YEAR_TIMESTAMP" เก่ากว่า keepDays วัน
+ * @param {number} keepDays - จำนวนวันที่จะเก็บไว้ (default: 60)
+ */
+function cleanupExportSheets(keepDays) {
+  try {
+    const days      = keepDays || 60;
+    const now       = Date.now();
+    const cutoffMs  = days * 24 * 60 * 60 * 1000;
+
+    const ss      = getOrCreateSpreadsheet();
+    const sheets  = ss.getSheets();
+    const deleted = [];
+
+    sheets.forEach(sheet => {
+      const name  = sheet.getName();
+      const match = name.match(/^Export_\d+_(\d+)$/); // Export_YEAR_TIMESTAMP
+      if (match) {
+        const sheetTs = Number(match[1]);
+        if (!isNaN(sheetTs) && (now - sheetTs) > cutoffMs) {
+          ss.deleteSheet(sheet);
+          deleted.push(name);
+        }
+      }
+    });
+
+    return {
+      success: true,
+      deleted: deleted.length,
+      sheets:  deleted,
+      message: `ลบ Export Sheets เก่า ${deleted.length} sheets (เก่ากว่า ${days} วัน)`
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * Archive ข้อมูล tb_data ของปีที่ระบุ ไปยัง Spreadsheet แยกต่างหาก
+ * ใช้สำหรับปีที่ปิดแล้วและต้องการเก็บข้อมูล แต่ไม่ต้องการให้กิน cell quota
+ * @param {string|number} year - ปีที่ต้องการ Archive (เช่น "2566")
+ */
+function archiveYearData(year) {
+  try {
+    const adminEmail  = Session.getActiveUser().getEmail();
+    const folder      = getScriptFolder();
+    const archiveName = `QA_BUTC_Archive_${year}`;
+
+    // ค้นหาหรือสร้าง Archive Spreadsheet
+    let archiveSS;
+    const existingFiles = folder.getFilesByName(archiveName);
+    if (existingFiles.hasNext()) {
+      archiveSS = SpreadsheetApp.open(existingFiles.next());
+    } else {
+      archiveSS = SpreadsheetApp.create(archiveName);
+      const archiveFile = DriveApp.getFileById(archiveSS.getId());
+      folder.addFile(archiveFile);
+      try { DriveApp.getRootFolder().removeFile(archiveFile); } catch(e) {}
+    }
+
+    // เตรียม Sheet ใน Archive
+    let archiveSheet = archiveSS.getSheetByName("tb_data");
+    if (!archiveSheet) {
+      archiveSheet = archiveSS.insertSheet("tb_data");
+      archiveSheet.appendRow(["Timestamp","UserEmail","Year","SectionID","SectionName","LastUpdate","DataJSON","SubmitterName"]);
+      archiveSheet.getRange(1, 1, 1, 8).setBackground('#1a237e').setFontColor('#ffffff').setFontWeight('bold');
+    }
+
+    // หาข้อมูลปีที่ต้องการ Archive
+    const mainSheet = ensureSheetExists("tb_data");
+    const mainData  = mainSheet.getDataRange().getValues();
+    const toArchive = [];
+    const toDelete  = [];
+
+    for (let i = 1; i < mainData.length; i++) {
+      if (String(mainData[i][2]) === String(year)) {
+        toArchive.push(mainData[i]);
+        toDelete.push(i + 1);
+      }
+    }
+
+    if (toArchive.length === 0) {
+      return { success: false, message: `ไม่พบข้อมูลปี ${year} ใน tb_data` };
+    }
+
+    // เขียนไปยัง Archive
+    toArchive.forEach(row => archiveSheet.appendRow(row));
+
+    // ลบจาก Main Sheet (จากล่างขึ้นบน)
+    for (let i = toDelete.length - 1; i >= 0; i--) {
+      mainSheet.deleteRow(toDelete[i]);
+    }
+
+    writeAuditLog(adminEmail, "ARCHIVE_YEAR", String(year),
+      `${toArchive.length} records → ${archiveName}`);
+    return {
+      success:    true,
+      archived:   toArchive.length,
+      archiveUrl: archiveSS.getUrl(),
+      message:    `Archive ปี ${year} สำเร็จ: ${toArchive.length} records → ${archiveName}`
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * รัน Maintenance ทั้งหมดในครั้งเดียว
+ * ถูกเรียกโดย Time-based Trigger รายเดือน (วันที่ 1 เวลา 02:00)
+ * สามารถรันด้วยตนเองจาก Apps Script Editor ได้เช่นกัน
+ */
+function runMonthlyMaintenance() {
+  const results = {};
+  try { results.compressVisits = compressOldVisits();     } catch(e) { results.compressVisits = { error: e.toString() }; }
+  try { results.pruneAudit     = pruneAuditLog(90);       } catch(e) { results.pruneAudit     = { error: e.toString() }; }
+  try { results.cleanupExports = cleanupExportSheets(60); } catch(e) { results.cleanupExports = { error: e.toString() }; }
+
+  // เคลียร์ Cache หลัง Maintenance เพื่อให้ข้อมูล fresh
+  try { _clearAppCache(); } catch(e) {}
+
+  const email = (() => { try { return Session.getActiveUser().getEmail() || "auto_trigger"; } catch(e) { return "auto_trigger"; } })();
+  writeAuditLog(email, "MONTHLY_MAINTENANCE", "system", JSON.stringify({
+    visits_deleted:  (results.compressVisits && results.compressVisits.deleted)  || 0,
+    audit_deleted:   (results.pruneAudit     && results.pruneAudit.deleted)      || 0,
+    exports_deleted: (results.cleanupExports && results.cleanupExports.deleted)  || 0
+  }));
+
+  Logger.log("=== Monthly Maintenance Results ===");
+  Logger.log(JSON.stringify(results, null, 2));
+  return results;
+}
+
+/**
+ * ตั้งค่า Time-based Trigger สำหรับ Monthly Maintenance
+ * เรียกฟังก์ชันนี้ **ครั้งเดียว** จาก Apps Script Editor
+ * (เลือก setupMaintenanceTriggers ใน Dropdown แล้วกด Run)
+ */
+function setupMaintenanceTriggers() {
+  // ลบ Trigger runMonthlyMaintenance เก่าก่อน (ป้องกัน duplicate)
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === "runMonthlyMaintenance") {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+
+  // สร้าง Trigger ใหม่: ทุกวันที่ 1 ของเดือน เวลา 02:00–03:00
+  ScriptApp.newTrigger("runMonthlyMaintenance")
+    .timeBased()
+    .onMonthDay(1)
+    .atHour(2)
+    .create();
+
+  Logger.log("✅ Maintenance Trigger ตั้งค่าแล้ว: runMonthlyMaintenance ทุกวันที่ 1 เวลา 02:00");
+  return { success: true, message: "ตั้งค่า Trigger สำเร็จ — Maintenance จะรันอัตโนมัติทุกวันที่ 1 ของเดือน" };
 }

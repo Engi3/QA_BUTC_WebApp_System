@@ -123,7 +123,12 @@ function homeSelectTab(tab) {
 
   // เรียก Render Function ตาม Tab ที่เลือก
   if (tab === "form")   renderPublicFormProgress();
-  if (tab === "iqa"    && typeof renderIqaPublicView === "function") renderIqaPublicView();
+  if (tab === "iqa" && typeof renderIqaPublicView === "function") {
+    try { renderIqaPublicView(); } catch(e) {
+      var c = document.getElementById("iqa-view-content");
+      if (c) c.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-exclamation-triangle-fill"></i><span>เกิดข้อผิดพลาด: '+escHtml(e.message||String(e))+'</span></div>';
+    }
+  }
   if (tab === "report") renderReportFormsPublic(); // ✅ Render ตารางแบบฟอร์มรายงาน
 }
 
@@ -318,42 +323,49 @@ function _renderFormProgressGrid(containerId, year) {
   var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">';
   activeForms.forEach(function(form) {
     var totalPoints = 0, completedPoints = 0;
-    var fieldCount = (form.fields || []).filter(function(f){ return f.type!=="divider" && f.type!=="image"; }).length;
-    
-    activeSections.forEach(function(sec) {
-      var dashRow = null;
-      for (var i = 0; i < yearData.length; i++) {
-        if (yearData[i].sectionId === sec.sectionId) { dashRow = yearData[i]; break; }
-      }
-      var dataObj = {};
-      if (dashRow && dashRow.dataJson) { try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) {} }
-      
-      (form.fields || []).forEach(function(field) {
-        if (field.type === "divider" || field.type === "image") return;
-        if (field.sectionIds && field.sectionIds.length && field.sectionIds.indexOf(sec.sectionId) < 0) return;
-        
-        totalPoints++;
-        if (field.type === "table") {
-          var prefix = field.key + "_r";
-          var hasData = Object.keys(dataObj).some(function(k) {
-            return k.indexOf(prefix) === 0
-              && k.indexOf("_total_rows") < 0 && k.indexOf("_col_meta") < 0 && k.indexOf("_table_def") < 0
-              && dataObj[k] !== "" && dataObj[k] !== null && dataObj[k] !== undefined;
-          });
-          if (hasData) completedPoints++;
-        } else {
-          var v = dataObj[field.key];
-          if (v !== undefined && v !== null && v !== "") completedPoints++;
+    // fieldCount ไม่นับ divider, image, toggle-group, checkbox-group, tick-grid (สอดคล้องกับ _calcFieldProgress)
+    var fieldCount = (form.fields || []).filter(function(f){
+      return f.type !== "divider" && f.type !== "image"
+        && f.type !== "toggle-group" && f.type !== "checkbox-group" && f.type !== "tick-grid";
+    }).length;
+    var isShared = (typeof _isSharedForm === 'function') && _isSharedForm(form);
+    var gRow = null;
+
+    if (isShared) {
+      // ฟอร์มส่วนกลาง: นับ field ครั้งเดียว อ่านจาก GLOBAL_ key
+      var gKey = "GLOBAL_" + form.formId;
+      for (var gi=0; gi<yearData.length; gi++) { if (yearData[gi].sectionId === gKey) { gRow = yearData[gi]; break; } }
+      var gDataObj = {};
+      if (gRow && gRow.dataJson) { try { gDataObj = JSON.parse(gRow.dataJson); } catch(e) {} }
+      var gProg = _calcFieldProgress(gKey, [form], gDataObj);
+      totalPoints    = gProg.total;
+      completedPoints = gProg.completed;
+    } else {
+      // ฟอร์ม Section-specific: รวม progress ทุก Section
+      activeSections.forEach(function(sec) {
+        var dashRow = null;
+        for (var i = 0; i < yearData.length; i++) {
+          if (yearData[i].sectionId === sec.sectionId) { dashRow = yearData[i]; break; }
         }
+        var dataObj = {};
+        if (dashRow && dashRow.dataJson) { try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) {} }
+        var sProg = _calcFieldProgress(sec.sectionId, [form], dataObj);
+        totalPoints    += sProg.total;
+        completedPoints += sProg.completed;
       });
-    });
+    }
 
     var pct = totalPoints > 0 ? Math.round(completedPoints / totalPoints * 100) : 0;
     var sColor = pct === 100 ? "var(--success)" : (pct > 0 ? "var(--warning)" : "var(--danger)");
-    
+    var subInfo = isShared ? '<span style="color:var(--info);font-weight:600;">ฟอร์มส่วนกลาง</span>' : ('เป้าหมาย ' + activeSections.length + ' Section');
+    var viewBtn = (isShared && gRow)
+      ? '<div class="mt-2"><button class="qa-btn-ghost w-100" style="font-size:.78rem;border:1px solid var(--border);" onclick="openViewModal(\''+escHtml("GLOBAL_"+form.formId)+'\',\''+escHtml(form.formName)+'\',\''+year+'\')">'
+        + '<i class="bi bi-search me-1"></i>ดูข้อมูลที่กรอก</button></div>'
+      : "";
+
     html += '<div class="qa-glass-card p-3">'
       + '<div style="font-weight:700;font-size:.9rem;color:var(--txt);margin-bottom:2px;"><i class="bi bi-file-earmark-text me-2" style="color:var(--primary);"></i>' + escHtml(form.formName) + '</div>'
-      + '<div style="font-size:.7rem;color:var(--txt-muted);margin-bottom:8px;">' + fieldCount + ' ฟิลด์ | เป้าหมาย ' + activeSections.length + ' Section</div>'
+      + '<div style="font-size:.7rem;color:var(--txt-muted);margin-bottom:8px;">' + fieldCount + ' ฟิลด์ | ' + subInfo + '</div>'
       + '<div class="progress mb-2" style="height:6px;background:var(--border-2);border-radius:3px;">'
       +   '<div class="progress-bar" style="width:' + pct + '%;background-color:' + sColor + ';"></div>'
       + '</div>'
@@ -361,6 +373,7 @@ function _renderFormProgressGrid(containerId, year) {
       +   '<span>กรอกแล้ว ' + completedPoints + ' / ' + totalPoints + ' รายการ</span>'
       +   '<span style="color:' + sColor + ';font-weight:600;">' + pct + '%</span>'
       + '</div>'
+      + viewBtn
       + '</div>';
   });
   html += '</div>';
@@ -370,17 +383,59 @@ function _renderFormProgressGrid(containerId, year) {
 // buildSectionCards — defined in js_user.html
 
 function openViewModal(secId, secName, year) {
-  var yr=year||(document.getElementById("public-year-select")||{}).value||"";
-  var sub=null;
-  for(var i=0;i<APP.dashboard.length;i++){if(APP.dashboard[i].sectionId===secId&&String(APP.dashboard[i].year)===String(yr)){sub=APP.dashboard[i];break;}}
-  if(!sub) return showToast("ไม่พบข้อมูล","warning");
-  document.getElementById("modal-view-title").innerHTML='<i class="bi bi-folder-open-fill me-2"></i>'+escHtml(secName)+' (ปี '+yr+')';
-  document.getElementById("modal-submitter-info").innerHTML='<i class="bi bi-person-check-fill fs-4"></i><div>ผู้รับผิดชอบ: <strong>'+escHtml(sub.submitterName||"-")+'</strong> | อัปเดต: '+toThaiDate(sub.lastUpdate,true)+'</div>';
-  var section=null;
-  for(var i=0;i<APP.sections.length;i++){if(APP.sections[i].sectionId===secId){section=APP.sections[i];break;}}
-  var secForms=section?getFormsForSection(section):[];
-  var dataObj={}; try{dataObj=JSON.parse(sub.dataJson||"{}");}catch(e){}
-  document.getElementById("modal-view-body").innerHTML=secForms.length?renderFormsRO(secForms,dataObj):renderRawRO(dataObj);
+  var yr = year || (document.getElementById("public-year-select")||{}).value || "";
+
+  // รวมข้อมูลฟอร์มส่วนกลาง (GLOBAL_ rows) + Section-specific row
+  var mergedDataObj = {};
+  var displaySubmitter = "-", displayUpdate = "";
+  (APP.dashboard || []).forEach(function(d) {
+    if (String(d.year) !== String(yr)) return;
+    if (d.sectionId && d.sectionId.indexOf("GLOBAL_") === 0 && d.dataJson) {
+      try { var gd = JSON.parse(d.dataJson); Object.keys(gd).forEach(function(k){ if(!(k in mergedDataObj)) mergedDataObj[k]=gd[k]; }); } catch(e) {}
+      if (!displayUpdate && d.lastUpdate) { displayUpdate = d.lastUpdate; displaySubmitter = d.submitterName || "-"; }
+    }
+  });
+
+  // Section-specific row (มีความสำคัญกว่า)
+  var sub = null;
+  for (var i=0; i<APP.dashboard.length; i++) {
+    if (APP.dashboard[i].sectionId === secId && String(APP.dashboard[i].year) === String(yr)) { sub = APP.dashboard[i]; break; }
+  }
+  if (sub && sub.dataJson) {
+    try { var sd = JSON.parse(sub.dataJson); Object.keys(sd).forEach(function(k){ mergedDataObj[k]=sd[k]; }); } catch(e) {}
+    displaySubmitter = sub.submitterName || displaySubmitter;
+    displayUpdate    = sub.lastUpdate    || displayUpdate;
+  }
+
+  // GLOBAL_ key โดยตรง (เรียกจาก form progress grid)
+  if (!sub && secId.indexOf("GLOBAL_") === 0) {
+    for (var j=0; j<APP.dashboard.length; j++) {
+      if (APP.dashboard[j].sectionId === secId && String(APP.dashboard[j].year) === String(yr)) { sub = APP.dashboard[j]; break; }
+    }
+    if (!sub && Object.keys(mergedDataObj).length === 0) return showToast("ไม่พบข้อมูล","warning");
+  }
+
+  if (!sub && Object.keys(mergedDataObj).filter(function(k){ return !k.endsWith("__by")&&!k.endsWith("__at")&&!k.endsWith("_total_rows")&&mergedDataObj[k]!==""; }).length === 0) {
+    return showToast("ไม่พบข้อมูล","warning");
+  }
+
+  document.getElementById("modal-view-title").innerHTML = '<i class="bi bi-folder-open-fill me-2"></i>'+escHtml(secName)+' (ปี '+yr+')';
+  document.getElementById("modal-submitter-info").innerHTML = '<i class="bi bi-person-check-fill fs-4"></i><div>ผู้รับผิดชอบ: <strong>'+escHtml(displaySubmitter)+'</strong> | อัปเดต: '+(displayUpdate?toThaiDate(displayUpdate,true):"-")+'</div>';
+
+  var secForms = [];
+  if (secId.indexOf("GLOBAL_") === 0) {
+    // ดู GLOBAL_ key → หาฟอร์มตรงๆ
+    var fid = secId.replace("GLOBAL_","");
+    var fObj = null;
+    for (var fi=0; fi<(APP.forms||[]).length; fi++) { if (APP.forms[fi].formId === fid) { fObj = APP.forms[fi]; break; } }
+    secForms = fObj ? [fObj] : [];
+  } else {
+    var section = null;
+    for (var si=0; si<APP.sections.length; si++) { if (APP.sections[si].sectionId===secId) { section=APP.sections[si]; break; } }
+    secForms = section ? getFormsForSection(section) : [];
+  }
+
+  document.getElementById("modal-view-body").innerHTML = secForms.length ? renderFormsRO(secForms, mergedDataObj) : renderRawRO(mergedDataObj);
   new bootstrap.Modal(document.getElementById("modal-view-data")).show();
 }
 
@@ -534,6 +589,53 @@ function renderFieldsRO(fields, dataObj) {
       var isOn=v==="ON"||v==="Y"||v===true||v==="true";
       html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div><span class="'+(isOn?"qa-readonly-toggle-on":"qa-readonly-toggle-off")+'">'+(isOn?"✅ เปิด":"❌ ปิด")+'</span>'+audit+'</div>'; continue;
     }
+    if(f.type==="toggle-group"){
+      var tgItems = f.items && f.items.length ? f.items : [];
+      var tgRows = tgItems.map(function(lb, ii){
+        var isOn2 = dataObj[f.key+"_tog"+ii] === "ON";
+        return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;"><span style="font-size:1rem;">'+(isOn2?"✅":"⬜")+'</span><span style="font-size:.9rem;">'+escHtml(lb)+'</span></div>';
+      }).join("");
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+(tgRows||'<div class="qa-readonly-val">-</div>')+audit+'</div>'; continue;
+    }
+    if(f.type==="checkbox-group"){
+      var cbItems = f.items && f.items.length ? f.items : [];
+      var cbRows = cbItems.map(function(lb, ii){
+        var chkVal = dataObj[f.key+"_item"+ii];
+        var isChk = chkVal && chkVal !== "";
+        return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;"><span style="font-size:1rem;">'+(isChk?"☑":"☐")+'</span><span style="font-size:.9rem;">'+escHtml(lb)+'</span></div>';
+      }).join("");
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+(cbRows||'<div class="qa-readonly-val">-</div>')+audit+'</div>'; continue;
+    }
+    if(f.type==="choice-grid"){
+      var cgRows = f.gridRows || [];
+      var cgCols = f.gridCols || [];
+      var cgHds = '<th style="min-width:80px;"></th>'+cgCols.map(function(c){ return '<th style="text-align:center;font-size:.82rem;padding:4px 6px;">'+escHtml(c)+'</th>'; }).join("");
+      var cgBdy = cgRows.map(function(r, ri){
+        var sel = dataObj[f.key+"_r"+ri] || "";
+        var cells = '<td style="font-size:.85rem;padding:4px 6px;">'+escHtml(r)+'</td>'+cgCols.map(function(c){
+          var isSel = sel === c;
+          return '<td style="text-align:center;padding:4px 6px;font-size:1rem;">'+(isSel?"🔵":"○")+'</td>';
+        }).join("");
+        return '<tr>'+cells+'</tr>';
+      }).join("");
+      var cgTable = cgRows.length ? '<div class="table-responsive"><table class="qa-grid-table" style="font-size:.85rem;"><thead><tr>'+cgHds+'</tr></thead><tbody>'+cgBdy+'</tbody></table></div>' : '<div class="qa-readonly-val">-</div>';
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+cgTable+audit+'</div>'; continue;
+    }
+    if(f.type==="tick-grid"){
+      var tkRows = f.gridRows || [];
+      var tkCols = f.gridCols || [];
+      var tkHds = '<th style="min-width:80px;"></th>'+tkCols.map(function(c){ return '<th style="text-align:center;font-size:.82rem;padding:4px 6px;">'+escHtml(c)+'</th>'; }).join("");
+      var tkBdy = tkRows.map(function(r, ri){
+        var cells = '<td style="font-size:.85rem;padding:4px 6px;">'+escHtml(r)+'</td>'+tkCols.map(function(c, ci){
+          var tkVal = dataObj[f.key+"_r"+ri+"_c"+ci];
+          var isTk = tkVal && tkVal !== "";
+          return '<td style="text-align:center;padding:4px 6px;font-size:1rem;">'+(isTk?"☑":"☐")+'</td>';
+        }).join("");
+        return '<tr>'+cells+'</tr>';
+      }).join("");
+      var tkTable = tkRows.length ? '<div class="table-responsive"><table class="qa-grid-table" style="font-size:.85rem;"><thead><tr>'+tkHds+'</tr></thead><tbody>'+tkBdy+'</tbody></table></div>' : '<div class="qa-readonly-val">-</div>';
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+tkTable+audit+'</div>'; continue;
+    }
     html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div><div class="qa-readonly-val">'+nlToBr(String(v))+'</div>'+audit+'</div>';
   }
   return html;
@@ -571,6 +673,8 @@ function _calcFieldProgress(secId, allForms, dataObj) {
     // ── Field-level count ──────────────────────────────────────────
     (form.fields || []).forEach(function(field) {
       if (field.type === "divider" || field.type === "image") return; // ไม่นับ divider และ image
+      // toggle-group, checkbox-group, tick-grid เป็น multi-select ที่ไม่เลือกก็ถือว่าตอบแล้ว → ไม่นับในความคืบหน้า
+      if (field.type === "toggle-group" || field.type === "checkbox-group" || field.type === "tick-grid") return;
       if (field.sectionIds && field.sectionIds.length && field.sectionIds.indexOf(secId) < 0) return;
       total++;
       if (field.type === "table") {
@@ -582,6 +686,15 @@ function _calcFieldProgress(secId, allForms, dataObj) {
             && dataObj[k] !== "" && dataObj[k] !== null && dataObj[k] !== undefined;
         });
         if (hasData) completed++;
+      } else if (field.type === "choice-grid") {
+        // choice-grid: radio per row → มีค่าใน _rN = ตอบแล้ว
+        var cgRows = field.gridRows || [];
+        var cgKey = field.key || "";
+        var cgFilled = cgKey && cgRows.some(function(r, ri) {
+          var val = dataObj[cgKey+"_r"+ri];
+          return val !== undefined && val !== null && val !== "";
+        });
+        if (cgFilled) completed++;
       } else {
         var v = dataObj[field.key];
         if (v !== undefined && v !== null && v !== "") completed++;
@@ -924,6 +1037,7 @@ function switchAdminTab(tabId){
   if(tabId==="tab-iqa")           initIqaTab();
   // ✅ Lazy render: โหลดตารางแบบฟอร์มรายงานทุกครั้งที่ Admin เปิด Tab นี้
   if(tabId==="tab-report-forms")  { if(typeof renderReportFormAdminSection==="function") renderReportFormAdminSection(); }
+  if(tabId==="tab-maintenance")   { loadDatabaseStats(); populateArchiveYearSelect(); }
 }
 
 function _formatMoneyRO(val) {
