@@ -1330,7 +1330,8 @@ function loadInitialData() {
         allUsers:     getAllUsers().data           || { admins: [], managers: [], users: [] },
         reportForms:      getReportFormsList().data        || [], // ✅ โหลดรายการแบบฟอร์มรายงาน
         reportFormGroups: (function() { try { return getReportFormGroupsConfig().groups || []; } catch(e) { return []; } })(),
-        reportFormOrder:  (function() { try { return getReportFormGroupsConfig().order  || {}; } catch(e) { return {}; } })()
+        reportFormOrder:  (function() { try { return getReportFormGroupsConfig().order  || {}; } catch(e) { return {}; } })(),
+        docTracking:      (function() { try { return getDocTracking().data || { groups: [] }; } catch(e) { return { groups: [] }; } })()
       };
       _putCache('app_static_data', staticData, 300); // cache 5 min
     }
@@ -1345,9 +1346,10 @@ function loadInitialData() {
       iqaMapping:       staticData.iqaMapping,
       iqaSchema:        staticData.iqaSchema,
       allUsers:         staticData.allUsers,
-      reportForms:      staticData.reportForms,      // ✅ ส่ง reportForms ไปให้ Frontend
-      reportFormGroups: staticData.reportFormGroups, // ✅ ส่ง Config กลุ่มไปให้ Frontend
-      reportFormOrder:  staticData.reportFormOrder,  // ✅ ส่ง Config ลำดับไปให้ Frontend
+      reportForms:      staticData.reportForms,
+      reportFormGroups: staticData.reportFormGroups,
+      reportFormOrder:  staticData.reportFormOrder,
+      docTracking:      staticData.docTracking,
       dashboard:    dashboard.data || [],
       visits:       visits
     };
@@ -1364,11 +1366,53 @@ function loadInitialData() {
       visits:       { total: 0, uniqueUsers: 0, today: 0 },
       iqaMapping:   {},
       allUsers:         { admins: [], managers: [], users: [] },
-      reportForms:      [], // ✅ ส่ง Array ว่างกรณีเกิด Error
-      reportFormGroups: [], // ✅ กลุ่มว่างกรณีเกิด Error
-      reportFormOrder:  {}, // ✅ ลำดับว่างกรณีเกิด Error
+      reportForms:      [],
+      reportFormGroups: [],
+      reportFormOrder:  {},
+      docTracking:      { groups: [] },
       dashboard:        []
     };
+  }
+}
+
+// ─────────────────────────────────────────
+// 14. DOC TRACKING
+// ─────────────────────────────────────────
+function getDocTracking() {
+  try {
+    const sh = ensureSheetExists("tb_theme");
+    const data = sh.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === "doc_tracking") {
+        try { return { success: true, data: JSON.parse(data[i][1] || '{"groups":[]}') }; }
+        catch(e) { return { success: true, data: { groups: [] } }; }
+      }
+    }
+    return { success: true, data: { groups: [] } };
+  } catch(e) {
+    return { success: false, data: { groups: [] }, message: e.toString() };
+  }
+}
+
+function saveDocTracking(jsonStr) {
+  try {
+    _clearAppCache();
+    const adminEmail = Session.getActiveUser().getEmail();
+    const sh = ensureSheetExists("tb_theme");
+    const data = sh.getDataRange().getValues();
+    const val = (typeof jsonStr === "string") ? jsonStr : JSON.stringify(jsonStr);
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === "doc_tracking") {
+        sh.getRange(i + 1, 1, 1, 4).setValues([["doc_tracking", val, new Date(), adminEmail]]);
+        writeAuditLog(adminEmail, "SAVE_DOC_TRACKING", "doc_tracking", "updated");
+        return { success: true };
+      }
+    }
+    sh.appendRow(["doc_tracking", val, new Date(), adminEmail]);
+    writeAuditLog(adminEmail, "SAVE_DOC_TRACKING", "doc_tracking", "created");
+    return { success: true };
+  } catch(e) {
+    return { success: false, message: e.toString() };
   }
 }
 

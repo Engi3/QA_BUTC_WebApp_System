@@ -100,36 +100,23 @@ function renderPublicDashboard() {
 }
 
 function homeSelectTab(tab) {
-  var formPanel   = document.getElementById("home-panel-form");
-  var qaPanel     = document.getElementById("home-panel-qa");
-  var iqaPanel    = document.getElementById("home-panel-iqa");
-  var reportPanel = document.getElementById("home-panel-report");  // ✅ แท็บแบบฟอร์มรายงาน
-  var formBtn     = document.getElementById("home-tab-form-btn");
-  var qaBtn       = document.getElementById("home-tab-qa-btn");
-  var iqaBtn      = document.getElementById("home-tab-iqa-btn");
-  var reportBtn   = document.getElementById("home-tab-report-btn"); // ✅ ปุ่มแท็บใหม่
+  var panels = { form: "home-panel-form", qa: "home-panel-qa", iqa: "home-panel-iqa", tracking: "home-panel-tracking", report: "home-panel-report" };
+  var btns   = { form: "home-tab-form-btn", qa: "home-tab-qa-btn", iqa: "home-tab-iqa-btn", tracking: "home-tab-tracking-btn", report: "home-tab-report-btn" };
 
-  // แสดง/ซ่อน Panel ตาม Tab ที่เลือก
-  if (formPanel)   formPanel.style.display   = tab === "form"   ? "block" : "none";
-  if (qaPanel)     qaPanel.style.display     = tab === "qa"     ? "block" : "none";
-  if (iqaPanel)    iqaPanel.style.display    = tab === "iqa"    ? "block" : "none";
-  if (reportPanel) reportPanel.style.display = tab === "report" ? "block" : "none";
+  Object.keys(panels).forEach(function(k) {
+    var p = document.getElementById(panels[k]); if (p) p.style.display = k === tab ? "block" : "none";
+    var b = document.getElementById(btns[k]);   if (b) b.className = k === tab ? "qa-tab-link active" : "qa-tab-link";
+  });
 
-  // อัปเดต Active Class ของปุ่ม Tab
-  if (formBtn)   formBtn.className   = tab === "form"   ? "qa-tab-link active" : "qa-tab-link";
-  if (qaBtn)     qaBtn.className     = tab === "qa"     ? "qa-tab-link active" : "qa-tab-link";
-  if (iqaBtn)    iqaBtn.className    = tab === "iqa"    ? "qa-tab-link active" : "qa-tab-link";
-  if (reportBtn) reportBtn.className = tab === "report" ? "qa-tab-link active" : "qa-tab-link";
-
-  // เรียก Render Function ตาม Tab ที่เลือก
-  if (tab === "form")   renderPublicFormProgress();
+  if (tab === "form")     renderPublicFormProgress();
   if (tab === "iqa" && typeof renderIqaPublicView === "function") {
     try { renderIqaPublicView(); } catch(e) {
       var c = document.getElementById("iqa-view-content");
       if (c) c.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-exclamation-triangle-fill"></i><span>เกิดข้อผิดพลาด: '+escHtml(e.message||String(e))+'</span></div>';
     }
   }
-  if (tab === "report") renderReportFormsPublic(); // ✅ Render ตารางแบบฟอร์มรายงาน
+  if (tab === "tracking") renderDocTrackingPublic();
+  if (tab === "report")   renderReportFormsPublic();
 }
 
 /**
@@ -1030,6 +1017,95 @@ function renderAdminCharts(sub, pend, yd){
   if(bcEl){var bc=bcEl.getContext("2d");if(APP.charts.bar)APP.charts.bar.destroy();var months=["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."],trend={};yd.forEach(function(d){if(d.lastUpdate){var m=new Date(d.lastUpdate).getMonth()+1;trend[m]=(trend[m]||0)+1;}});APP.charts.bar=new Chart(bc,{type:"bar",data:{labels:months,datasets:[{label:"Section ที่บันทึก",data:Array.from({length:12},function(_,i){return trend[i+1]||0;}),backgroundColor:"rgba(37,99,235,.7)",borderRadius:6,borderSkipped:false}]},options:{scales:{y:{beginAtZero:true,ticks:{stepSize:1,color:txtColor},grid:{color:gridColor}},x:{ticks:{color:txtColor},grid:{display:false}}},plugins:{legend:{display:false}}}});}
 }
 
+// ══════════════════════════════════════════════════════════
+// PUBLIC: แสดงความคืบหน้าการส่งเอกสาร
+// ══════════════════════════════════════════════════════════
+function renderDocTrackingPublic() {
+  var el = document.getElementById("doc-tracking-public-container");
+  if (!el) return;
+  var dt = APP.docTracking || { groups: [] };
+  var groups = dt.groups || [];
+
+  if (!groups.length) {
+    el.innerHTML = '<div class="qa-glass-card p-5 text-center"><i class="bi bi-check2-square" style="font-size:3rem;color:var(--primary);opacity:.4;"></i><p class="text-muted mt-3 mb-0">ยังไม่มีข้อมูลความคืบหน้าเอกสาร</p></div>';
+    return;
+  }
+
+  // คำนวณ progress รวม
+  var totalSt = 0, doneSt = 0;
+  groups.forEach(function(g) {
+    (g.items || []).forEach(function(it) {
+      (it.statuses || []).forEach(function(s) { totalSt++; if (s.checked) doneSt++; });
+    });
+  });
+  var overallPct = totalSt > 0 ? Math.round(doneSt / totalSt * 100) : 0;
+  var overallColor = overallPct >= 100 ? "#059669" : overallPct >= 50 ? "#2563eb" : "#f59e0b";
+
+  var html = '<div class="qa-glass-card p-4 mb-4">'
+    + '<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">'
+    + '<div><h6 style="margin:0;font-weight:700;font-size:1rem;"><i class="bi bi-check2-square me-2" style="color:var(--primary);"></i>ภาพรวมความคืบหน้าเอกสาร</h6></div>'
+    + '<span style="font-size:1.3rem;font-weight:800;color:'+overallColor+';">'+overallPct+'%</span>'
+    + '</div>'
+    + '<div style="background:var(--surface-2);border-radius:8px;height:12px;overflow:hidden;">'
+    + '<div style="height:100%;background:'+overallColor+';border-radius:8px;width:'+overallPct+'%;transition:width .5s;"></div>'
+    + '</div>'
+    + '<div class="text-muted" style="font-size:.78rem;margin-top:6px;">'+doneSt+' / '+totalSt+' สถานะ</div>'
+    + '</div>';
+
+  groups.forEach(function(g) {
+    var gTotal = 0, gDone = 0;
+    (g.items || []).forEach(function(it) {
+      (it.statuses || []).forEach(function(s) { gTotal++; if (s.checked) gDone++; });
+    });
+    var gPct = gTotal > 0 ? Math.round(gDone / gTotal * 100) : 0;
+    var gColor = gPct >= 100 ? "#059669" : gPct >= 50 ? "#2563eb" : "#f59e0b";
+
+    html += '<div class="qa-glass-card p-4 mb-3">'
+      + '<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">'
+      + '<div style="display:flex;align-items:center;gap:10px;">'
+      + '<div style="width:36px;height:36px;border-radius:8px;background:rgba(37,99,235,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
+      + '<i class="bi bi-folder2-open" style="color:var(--primary);font-size:1.1rem;"></i>'
+      + '</div>'
+      + '<div><div style="font-weight:700;font-size:.95rem;color:var(--txt-1);">'+escHtml(g.title||"(ไม่มีชื่อ)")+'</div>'
+      + '<div style="font-size:.75rem;color:var(--txt-muted);">'+gDone+' / '+gTotal+' สถานะ</div></div>'
+      + '</div>'
+      + '<span style="font-size:1.1rem;font-weight:800;color:'+gColor+';">'+gPct+'%</span>'
+      + '</div>'
+      + '<div style="background:var(--surface-2);border-radius:6px;height:6px;overflow:hidden;margin-bottom:16px;">'
+      + '<div style="height:100%;background:'+gColor+';border-radius:6px;width:'+gPct+'%;transition:width .5s;"></div></div>';
+
+    (g.items || []).forEach(function(it) {
+      var itTotal = (it.statuses || []).length;
+      var itDone  = (it.statuses || []).filter(function(s){return s.checked;}).length;
+      var itPct   = itTotal > 0 ? Math.round(itDone / itTotal * 100) : 0;
+
+      html += '<div style="background:var(--surface-2);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:8px;">'
+        + '<div class="d-flex align-items-center justify-content-between mb-2">'
+        + '<div style="font-weight:600;font-size:.85rem;color:var(--txt-1);"><i class="bi bi-file-earmark-text me-2" style="color:var(--primary);opacity:.7;"></i>'+escHtml(it.title||"(ไม่มีชื่อ)")+'</div>'
+        + '<span style="font-size:.78rem;font-weight:700;color:'+(itPct>=100?"#059669":itPct>=50?"#2563eb":"#f59e0b")+';">'+itPct+'%</span>'
+        + '</div>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+
+      (it.statuses || []).forEach(function(s) {
+        var chk = s.checked;
+        html += '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:.78rem;font-weight:600;'
+          + (chk ? 'background:#dcfce7;color:#15803d;' : 'background:var(--surface-3,rgba(0,0,0,.05));color:var(--txt-muted);') + '">'
+          + (chk ? '<i class="bi bi-check-circle-fill"></i>' : '<i class="bi bi-circle"></i>')
+          + escHtml(s.label||"") + '</span>';
+      });
+
+      html += '</div></div>';
+    });
+
+    if (!g.items || !g.items.length) {
+      html += '<p class="text-muted small text-center py-2 mb-0">ยังไม่มีหัวข้อย่อย</p>';
+    }
+    html += '</div>';
+  });
+
+  el.innerHTML = html;
+}
+
 function loadVisitStats(){
   var vs=APP.visits||{};
   function e(id,v){var el=document.getElementById(id);if(el)el.innerText=(v!==undefined&&v!==null)?v:"--";}
@@ -1050,6 +1126,7 @@ function switchAdminTab(tabId){
   if(tabId==="tab-iqa")           initIqaTab();
   // ✅ Lazy render: โหลดตารางแบบฟอร์มรายงานทุกครั้งที่ Admin เปิด Tab นี้
   if(tabId==="tab-report-forms")  { if(typeof renderReportFormAdminSection==="function") renderReportFormAdminSection(); }
+  if(tabId==="tab-doc-tracking")  { if(typeof renderDocTrackingAdmin==="function") renderDocTrackingAdmin(); }
   if(tabId==="tab-maintenance")   { loadDatabaseStats(); populateArchiveYearSelect(); }
 }
 

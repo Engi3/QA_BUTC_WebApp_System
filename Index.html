@@ -100,6 +100,7 @@
       <li><a class="qa-tab-link active" onclick="homeSelectTab('form')" id="home-tab-form-btn"><i class="bi bi-file-earmark-bar-graph-fill me-2"></i>ข้อมูลแต่ละแบบฟอร์ม</a></li>
       <li><a class="qa-tab-link" onclick="homeSelectTab('qa')" id="home-tab-qa-btn"><i class="bi bi-grid-3x3-gap-fill me-2"></i>สถานะแต่ละ Section</a></li>
       <li><a class="qa-tab-link" onclick="homeSelectTab('iqa')" id="home-tab-iqa-btn"><i class="bi bi-diagram-3-fill me-2"></i>สรุปข้อมูลหน้าจอ IQA </a></li>
+      <li><a class="qa-tab-link" onclick="homeSelectTab('tracking')" id="home-tab-tracking-btn"><i class="bi bi-check2-square me-2"></i>ความคืบหน้าเอกสาร</a></li>
       <li><a class="qa-tab-link" onclick="homeSelectTab('report')" id="home-tab-report-btn"><i class="bi bi-file-earmark-arrow-down-fill me-2"></i>แบบฟอร์มรายงาน</a></li>
     </ul>
 
@@ -115,6 +116,12 @@
 
     <div id="home-panel-iqa" style="display:none;">
       <div id="iqa-view-content"></div>
+    </div>
+
+    <div id="home-panel-tracking" style="display:none;">
+      <div id="doc-tracking-public-container">
+        <div class="text-center py-5 text-muted"><div class="qa-spinner"></div><p class="mt-3">กำลังโหลด...</p></div>
+      </div>
     </div>
 
     <div id="home-panel-report" style="display:none;">
@@ -272,6 +279,7 @@
       <li><a class="qa-tab-link" onclick="switchAdminTab('tab-theme')" data-tab="tab-theme"><i class="bi bi-palette-fill me-1"></i>ธีม</a></li>
       <li><a class="qa-tab-link" onclick="switchAdminTab('tab-iqa')" data-tab="tab-iqa"><i class="bi bi-diagram-3-fill me-1"></i>IQA Mapping</a></li>
       <li><a class="qa-tab-link" onclick="switchAdminTab('tab-report-forms')" data-tab="tab-report-forms"><i class="bi bi-file-earmark-arrow-down-fill me-1"></i>แบบฟอร์มรายงาน</a></li>
+      <li><a class="qa-tab-link" onclick="switchAdminTab('tab-doc-tracking')" data-tab="tab-doc-tracking"><i class="bi bi-check2-square me-1"></i>ติดตามเอกสาร</a></li>
       <li><a class="qa-tab-link" onclick="switchAdminTab('tab-maintenance')" data-tab="tab-maintenance"><i class="bi bi-tools me-1"></i>ดูแลระบบ</a></li>
     </ul>
 
@@ -533,6 +541,25 @@
         <div class="col-lg-6 mb-4">
           <div class="qa-glass-card p-4"><h6 class="fw-700 mb-3"><i class="bi bi-shield-lock-fill text-danger me-2"></i>ล้างข้อมูล (Admin Mode)</h6><div class="qa-alert qa-alert-warning"><i class="bi bi-info-circle-fill"></i><span>ใช้ปุ่ม "ล้างข้อมูลส่วนนี้" ที่หน้ากรอกข้อมูล (Admin Mode)</span></div></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ✅ Tab: ติดตามความคืบหน้าเอกสาร -->
+    <div id="tab-doc-tracking" class="qa-tab-content">
+      <div class="qa-glass-card p-4 mb-4">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
+          <div>
+            <h6 style="margin:0;font-weight:700;"><i class="bi bi-check2-square me-2" style="color:var(--primary);font-size:1.2rem;"></i>ติดตามความคืบหน้าเอกสาร</h6>
+            <p class="text-muted small mb-0">กำหนดหัวข้อ หัวข้อย่อย และสถานะสำหรับแสดงความคืบหน้าในหน้าแรก</p>
+          </div>
+          <button class="qa-btn-primary" onclick="_dtSave()">
+            <i class="bi bi-save-fill me-1"></i>บันทึกการเปลี่ยนแปลง
+          </button>
+        </div>
+        <div id="dt-admin-container"></div>
+        <button class="qa-btn-ghost w-100 mt-3" onclick="_dtAddGroup()" style="border:1.5px dashed var(--border);border-radius:var(--r-sm);padding:10px;">
+          <i class="bi bi-plus-circle me-1"></i>เพิ่มหัวข้อใหญ่
+        </button>
       </div>
     </div>
 

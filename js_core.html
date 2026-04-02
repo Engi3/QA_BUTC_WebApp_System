@@ -505,9 +505,10 @@ function refreshAllData(cb) {
         APP.departments = res.departments || []; // ✅ รับข้อมูล Department เข้ามาเก็บไว้
         APP.forms       = res.forms       || [];
         APP.visits      = res.visits      || {};
-        APP.reportForms      = res.reportForms      || []; // ✅ อัปเดต reportForms ใน refreshAllData ด้วย
-        APP.reportFormGroups = res.reportFormGroups || []; // ✅ อัปเดต Config กลุ่มด้วย
-        APP.reportFormOrder  = res.reportFormOrder  || {}; // ✅ อัปเดต Config ลำดับด้วย
+        APP.reportForms      = res.reportForms      || [];
+        APP.reportFormGroups = res.reportFormGroups || [];
+        APP.reportFormOrder  = res.reportFormOrder  || {};
+        APP.docTracking      = res.docTracking      || { groups: [] };
         if (res.allUsers) APP.allUsersCache = res.allUsers;
         // อัปเดต iqaSchema หลัง refresh
         if (res.iqaSchema) {

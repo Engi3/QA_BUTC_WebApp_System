@@ -1208,8 +1208,11 @@ function renderFormList() {
       +'<td>'+secCell+'</td>'
       +'<td style="text-align:center;"><span style="background:var(--primary-ul);color:var(--primary);padding:2px 9px;border-radius:10px;font-size:.74rem;">'+(f.fields||[]).length+' ฟิลด์</span></td>'
       +'<td>'+(f.isActive?'<span class="qa-status-pill ok">ใช้งาน</span>':'<span class="qa-status-pill wait">ปิด</span>')+'</td>'
-      +'<td><button class="qa-btn-ghost btn-sm me-1" data-form-edit="'+escHtml(f.formId)+'" onclick="_formEditBtn(this)"><i class="bi bi-pencil"></i></button>'
-      +'<button class="qa-btn-danger btn-sm" data-del-type="form" data-del-id="'+escHtml(f.formId)+'" data-del-name="'+escHtml(f.formName)+'" onclick="_delBtn(this)"><i class="bi bi-trash"></i></button></td></tr>';
+      +'<td>'
+      +'<button class="qa-btn-ghost btn-sm me-1" data-form-edit="'+escHtml(f.formId)+'" onclick="_formEditBtn(this)" title="แก้ไข"><i class="bi bi-pencil"></i></button>'
+      +'<button class="qa-btn-ghost btn-sm me-1" onclick="duplicateForm(\''+escHtml(f.formId)+'\')" title="สำเนาฟอร์ม" style="color:var(--info);"><i class="bi bi-copy"></i></button>'
+      +'<button class="qa-btn-danger btn-sm" data-del-type="form" data-del-id="'+escHtml(f.formId)+'" data-del-name="'+escHtml(f.formName)+'" onclick="_delBtn(this)" title="ลบ"><i class="bi bi-trash"></i></button>'
+      +'</td></tr>';
   });
   c.innerHTML = '<div class="table-responsive"><table class="qa-table"><thead><tr><th>ชื่อ Form</th><th>Section</th><th>ฟิลด์</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
@@ -1234,6 +1237,65 @@ function editForm(formId) {
   }
   var btn = document.getElementById("btn-save-form"); if(btn) btn.innerHTML='<i class="bi bi-pencil-fill me-1"></i>แก้ไข Form';
   switchAdminTab("tab-forms");
+}
+
+function duplicateForm(formId) {
+  var src = null;
+  for (var i = 0; i < APP.forms.length; i++) { if (APP.forms[i].formId === formId) { src = APP.forms[i]; break; } }
+  if (!src) { showToast("ไม่พบ Form ต้นฉบับ", "danger"); return; }
+
+  var ts = Date.now();
+  // generate key ใหม่ทุก field เพื่อป้องกันชนกับต้นฉบับ
+  var clonedFields = (src.fields || []).map(function(f, fi) {
+    return {
+      id:          "f" + ts + fi + Math.random().toString(36).slice(2, 5),
+      key:         "fld_" + (ts + fi) + Math.random().toString(36).slice(2, 5),
+      type:        f.type        || "text",
+      label:       f.label       || "",
+      required:    !!f.required,
+      desc:        f.desc        || "",
+      placeholder: f.placeholder || "",
+      options:     f.options     || "",
+      columns:     f.columns     || "",
+      sectionIds:  (f.sectionIds || []).slice(),
+      items:       JSON.parse(JSON.stringify(f.items || [])),
+      allowCustom: !!f.allowCustom,
+      imageData:   f.imageData   || "",
+      tableDef:    f.tableDef    ? JSON.parse(JSON.stringify(f.tableDef)) : null,
+      scaleMin:    f.scaleMin    !== undefined ? f.scaleMin : 0,
+      scaleMax:    f.scaleMax    !== undefined ? f.scaleMax : 5,
+      labelMin:    f.labelMin    || "",
+      labelMax:    f.labelMax    || "",
+      gridRows:    f.gridRows    ? JSON.parse(JSON.stringify(f.gridRows)) : ["แถวที่ 1"],
+      gridCols:    f.gridCols    ? JSON.parse(JSON.stringify(f.gridCols)) : ["คอลัมน์ 1", "คอลัมน์ 2"]
+    };
+  });
+
+  // โหลดเข้า Form Builder เป็น Form ใหม่ (form-id-hidden ว่าง = สร้างใหม่)
+  if (typeof clearFormBuilder === "function") clearFormBuilder();
+  switchAdminTab("tab-forms");
+
+  var idEl   = document.getElementById("form-id-hidden");
+  var nameEl = document.getElementById("form-name");
+  var secEl  = document.getElementById("form-section-id");
+  var descEl = document.getElementById("form-desc");
+  var noteEl = document.getElementById("form-note");
+  var btn    = document.getElementById("btn-save-form");
+
+  if (idEl)   idEl.value   = "";                             // ว่าง → backend จะสร้าง ID ใหม่
+  if (nameEl) nameEl.value = "สำเนา - " + (src.formName || "");
+  if (secEl)  secEl.value  = src.sectionId || "";
+  if (descEl) { descEl.value = src.description || ""; if(typeof autoExpand==="function") autoExpand(descEl); }
+  if (noteEl) { noteEl.value = src.note       || ""; if(typeof autoExpand==="function") autoExpand(noteEl); }
+
+  if (typeof _fbFields !== "undefined") {
+    _fbFields = clonedFields;
+    if (typeof _fbRenderAll   === "function") _fbRenderAll();
+    if (typeof _fbUpdatePreview === "function") _fbUpdatePreview();
+  }
+
+  if (btn) btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>สร้าง Form (สำเนา)';
+  showToast('สำเนาจาก "' + (src.formName||"") + '" — แก้ไขแล้วกดบันทึก', "info");
 }
 
 
@@ -1581,6 +1643,186 @@ function runAllMaintenance(btn) {
       if (r) r.innerHTML = '<div class="qa-alert qa-alert-danger"><i class="bi bi-x-circle-fill"></i><span>'+escHtml(err.message||err)+'</span></div>';
     })
     .runMonthlyMaintenance();
+}
+
+// ══════════════════════════════════════════════════════════
+// DOC TRACKING ADMIN
+// ══════════════════════════════════════════════════════════
+
+var _dtData = null; // working copy
+
+function _dtInit() {
+  if (!_dtData) {
+    var src = APP.docTracking || { groups: [] };
+    _dtData = JSON.parse(JSON.stringify(src)); // deep clone
+  }
+}
+
+function _dtUid() {
+  return "id_" + Date.now() + Math.random().toString(36).slice(2, 6);
+}
+
+function renderDocTrackingAdmin() {
+  _dtData = null; _dtInit();
+  _dtRender();
+}
+
+function _dtRender() {
+  var el = document.getElementById("dt-admin-container");
+  if (!el) return;
+  var groups = (_dtData && _dtData.groups) || [];
+  if (!groups.length) {
+    el.innerHTML = '<p class="text-muted text-center py-3">ยังไม่มีหัวข้อ — กด "เพิ่มหัวข้อใหญ่" ด้านล่าง</p>';
+    return;
+  }
+  var html = "";
+  groups.forEach(function(g, gi) {
+    // คำนวณ progress ของกลุ่ม
+    var gTotal = 0, gDone = 0;
+    (g.items || []).forEach(function(it) {
+      (it.statuses || []).forEach(function(s) { gTotal++; if (s.checked) gDone++; });
+    });
+    var gPct = gTotal > 0 ? Math.round(gDone / gTotal * 100) : 0;
+    var gColor = gPct >= 100 ? "#059669" : gPct >= 50 ? "#2563eb" : "#f59e0b";
+
+    html += '<div class="qa-glass-card p-0 mb-3" style="border:1.5px solid var(--border);border-radius:var(--r-sm);overflow:hidden;">'
+      // ── หัวกลุ่ม ──
+      + '<div style="background:var(--surface-2);padding:10px 14px;display:flex;align-items:center;gap:8px;">'
+      + '<i class="bi bi-folder2-open" style="color:var(--primary);font-size:1.1rem;flex-shrink:0;"></i>'
+      + '<input type="text" value="'+escHtml(g.title||"")
+      + '" onchange="_dtGroupTitle('+gi+',this.value)" class="qa-input py-1" style="flex:1;font-weight:700;font-size:.9rem;" placeholder="ชื่อหัวข้อใหญ่...">'
+      + '<span style="font-size:.78rem;font-weight:700;color:'+gColor+';min-width:36px;text-align:right;">'+gPct+'%</span>'
+      + '<button class="qa-btn-ghost btn-sm" onclick="_dtDeleteGroup('+gi+')" title="ลบหัวข้อใหญ่" style="color:var(--danger);padding:4px 8px;"><i class="bi bi-trash-fill"></i></button>'
+      + '</div>'
+      // ── รายการ items ──
+      + '<div style="padding:10px 14px;">';
+
+    (g.items || []).forEach(function(it, ii) {
+      var itTotal = (it.statuses || []).length;
+      var itDone  = (it.statuses || []).filter(function(s){return s.checked;}).length;
+
+      html += '<div style="background:var(--surface-1,var(--surface));border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:8px;">'
+        // item header
+        + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'
+        + '<i class="bi bi-file-earmark-text" style="color:var(--primary);opacity:.7;flex-shrink:0;"></i>'
+        + '<input type="text" value="'+escHtml(it.title||"")
+        + '" onchange="_dtItemTitle('+gi+','+ii+',this.value)" class="qa-input py-1" style="flex:1;font-size:.85rem;" placeholder="ชื่อหัวข้อย่อย...">'
+        + '<span style="font-size:.75rem;color:var(--txt-muted);min-width:30px;text-align:right;">'+itDone+'/'+itTotal+'</span>'
+        + '<button class="qa-btn-ghost btn-sm" onclick="_dtDeleteItem('+gi+','+ii+')" title="ลบหัวข้อย่อย" style="color:var(--danger);padding:3px 7px;"><i class="bi bi-trash"></i></button>'
+        + '</div>'
+        // statuses
+        + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">';
+
+      (it.statuses || []).forEach(function(s, si) {
+        var chk = !!s.checked;
+        html += '<div style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:20px;border:1.5px solid '
+          + (chk ? '#16a34a' : 'var(--border)') + ';background:' + (chk ? '#dcfce7' : 'var(--surface-2)') + ';">'
+          + '<input type="checkbox" '+(chk?'checked':'')
+          + ' onchange="_dtToggleStatus('+gi+','+ii+','+si+',this.checked)" style="cursor:pointer;accent-color:#16a34a;">'
+          + '<input type="text" value="'+escHtml(s.label||"")+'" onchange="_dtStatusLabel('+gi+','+ii+','+si+',this.value)"'
+          + ' class="qa-input py-0 px-1" style="border:none;background:transparent;font-size:.78rem;width:'
+          + Math.max(80, (s.label||"").length * 9 + 20) + 'px;" placeholder="ชื่อสถานะ...">'
+          + '<button onclick="_dtDeleteStatus('+gi+','+ii+','+si+')" style="background:none;border:none;padding:0 2px;cursor:pointer;color:var(--danger);line-height:1;font-size:.85rem;"><i class="bi bi-x-lg"></i></button>'
+          + '</div>';
+      });
+
+      html += '</div>'
+        + '<button class="qa-btn-ghost btn-sm" onclick="_dtAddStatus('+gi+','+ii+')" style="font-size:.78rem;">'
+        + '<i class="bi bi-plus me-1"></i>เพิ่มสถานะ</button>'
+        + '</div>';
+    });
+
+    html += '<button class="qa-btn-ghost btn-sm w-100 mt-1 mb-1" onclick="_dtAddItem('+gi+')" style="border:1px dashed var(--border);font-size:.82rem;">'
+      + '<i class="bi bi-plus me-1"></i>เพิ่มหัวข้อย่อย</button>'
+      + '</div></div>'; // end items + card
+  });
+
+  el.innerHTML = html;
+}
+
+function _dtGroupTitle(gi, val) {
+  _dtInit();
+  if (_dtData.groups[gi]) _dtData.groups[gi].title = val;
+}
+function _dtItemTitle(gi, ii, val) {
+  _dtInit();
+  var item = (_dtData.groups[gi] || {}).items && _dtData.groups[gi].items[ii];
+  if (item) item.title = val;
+}
+function _dtStatusLabel(gi, ii, si, val) {
+  _dtInit();
+  var st = ((_dtData.groups[gi]||{}).items||[])[ii];
+  if (st && st.statuses && st.statuses[si]) st.statuses[si].label = val;
+}
+function _dtToggleStatus(gi, ii, si, checked) {
+  _dtInit();
+  var st = ((_dtData.groups[gi]||{}).items||[])[ii];
+  if (st && st.statuses && st.statuses[si]) st.statuses[si].checked = !!checked;
+  // อัปเดต badge ทันทีโดยไม่ re-render ทั้งหน้า
+  _dtRender();
+}
+function _dtAddGroup() {
+  _dtInit();
+  _dtData.groups.push({ groupId: _dtUid(), title: "", items: [] });
+  _dtRender();
+}
+function _dtDeleteGroup(gi) {
+  _dtInit();
+  _dtData.groups.splice(gi, 1);
+  _dtRender();
+}
+function _dtAddItem(gi) {
+  _dtInit();
+  if (!_dtData.groups[gi]) return;
+  if (!_dtData.groups[gi].items) _dtData.groups[gi].items = [];
+  _dtData.groups[gi].items.push({ itemId: _dtUid(), title: "", statuses: [] });
+  _dtRender();
+}
+function _dtDeleteItem(gi, ii) {
+  _dtInit();
+  if (_dtData.groups[gi] && _dtData.groups[gi].items) _dtData.groups[gi].items.splice(ii, 1);
+  _dtRender();
+}
+function _dtAddStatus(gi, ii) {
+  _dtInit();
+  var item = (_dtData.groups[gi]||{}).items && _dtData.groups[gi].items[ii];
+  if (!item) return;
+  if (!item.statuses) item.statuses = [];
+  item.statuses.push({ statusId: _dtUid(), label: "", checked: false });
+  _dtRender();
+}
+function _dtDeleteStatus(gi, ii, si) {
+  _dtInit();
+  var item = (_dtData.groups[gi]||{}).items && _dtData.groups[gi].items[ii];
+  if (item && item.statuses) item.statuses.splice(si, 1);
+  _dtRender();
+}
+function _dtSave() {
+  _dtInit();
+  // sync input values ก่อน save (browser อาจยังไม่ fire onchange ถ้ายังอยู่ใน focus)
+  var el = document.getElementById("dt-admin-container");
+  if (el) {
+    el.querySelectorAll("input[type='text']").forEach(function(inp) {
+      inp.dispatchEvent(new Event("change"));
+    });
+  }
+  var btn = document.querySelector("#tab-doc-tracking .qa-btn-primary");
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>กำลังบันทึก...'; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึกการเปลี่ยนแปลง'; }
+      if (res && res.success) {
+        APP.docTracking = JSON.parse(JSON.stringify(_dtData));
+        showToast("บันทึกสำเร็จ", "success");
+      } else {
+        showToast((res && res.message) || "บันทึกไม่สำเร็จ", "danger");
+      }
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึกการเปลี่ยนแปลง'; }
+      showToast(err.message || err, "danger");
+    })
+    .saveDocTracking(JSON.stringify(_dtData));
 }
 
 </script>
