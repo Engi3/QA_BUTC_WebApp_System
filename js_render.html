@@ -407,11 +407,11 @@ function _renderFormProgressGrid(containerId, year) {
           field.sectionIds.forEach(function(sid){ if (_respSecIds.indexOf(sid) < 0) _respSecIds.push(sid); });
         }
       });
-      if (_hasOpenField || !_respSecIds.length) {
-        // มีอย่างน้อย 1 field ที่ไม่ระบุ section = ทุก section เห็น
+      if (!_respSecIds.length) {
+        // ไม่มี field ไหนระบุ section เลย
         subInfo = 'เป้าหมาย ' + activeSections.length + ' Section';
       } else {
-        // ทุก field มี sectionIds ระบุ → แสดงชื่อ Section ที่รับผิดชอบ
+        // แสดง Section ที่ระบุใน field (แม้บาง field จะเปิดให้ทุก Section)
         var _respSecs = activeSections.filter(function(s){ return _respSecIds.indexOf(s.sectionId) >= 0; });
         if (!_respSecs.length) {
           subInfo = 'เป้าหมาย ' + activeSections.length + ' Section';
@@ -712,6 +712,18 @@ function _renderOneFieldRO(f, dataObj) {
     var v=dataObj[f.key]!==undefined?dataObj[f.key]:"-";
     var audit=_fieldAuditTag(f.key,dataObj);
     var html="";
+    var sids = f.sectionIds || [];
+    var ownerBadge;
+    if (!sids.length) {
+      ownerBadge = '<div class="qa-field-owner"><span class="qa-field-owner-badge all"><i class="bi bi-people-fill me-1"></i>ทุก Section</span></div>';
+    } else {
+      var oBadgeInner = sids.map(function(sid){
+        var sName = sid;
+        for (var _j=0; _j<(APP.sections||[]).length; _j++){ if(APP.sections[_j].sectionId===sid){ sName=APP.sections[_j].sectionName; break; } }
+        return '<span class="qa-field-owner-badge sec"><i class="bi bi-person-check-fill me-1"></i>'+escHtml(sName)+'</span>';
+      }).join("");
+      ownerBadge = '<div class="qa-field-owner">'+oBadgeInner+'</div>';
+    }
 
     if(f.type === "image"){
       var imgHtml = "";
@@ -720,30 +732,32 @@ function _renderOneFieldRO(f, dataObj) {
       } else {
         imgHtml = '<div class="qa-readonly-val">ไม่มีรูปภาพ</div>';
       }
-      html += '<div class="mb-3"><div class="qa-label">' + nlToBr(f.label) + '</div>' + imgHtml + audit + '</div>';
+      html += '<div class="mb-3"><div class="qa-label">' + nlToBr(f.label) + '</div>' + ownerBadge + imgHtml + audit + '</div>';
       return html;
     }
     if(f.type==="table"){
+      var _tblHtml;
       if (f.tableDef && f.tableDef.cols && f.tableDef.cols.length) {
-        html += _renderEnhancedTableRO(f, dataObj);
+        _tblHtml = _renderEnhancedTableRO(f, dataObj);
       } else {
-        html+=_renderTableRO(f.label,f.key,f.columns||"",dataObj);
+        _tblHtml = _renderTableRO(f.label,f.key,f.columns||"",dataObj);
       }
+      html += _tblHtml.replace('</div>', '</div>'+ownerBadge);
       return html;
     }
     if(f.type==="checkbox"){
-      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div><div class="qa-readonly-val">'+((v==="Y"||v===true)?"✅ ใช่":"❌ ไม่ใช่")+'</div>'+audit+'</div>'; return html;
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+ownerBadge+'<div class="qa-readonly-val">'+((v==="Y"||v===true)?"✅ ใช่":"❌ ไม่ใช่")+'</div>'+audit+'</div>'; return html;
     }
     if(f.type==="link"){
       var url=escHtml(String(v)), isUrl=v&&v!=="-"&&(String(v).indexOf("http://")===0||String(v).indexOf("https://")===0);
-      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+(isUrl?'<a href="'+url+'" target="_blank" class="qa-readonly-link"><i class="bi bi-box-arrow-up-right me-2"></i>'+url+'</a>':'<div class="qa-readonly-val">'+nlToBr(String(v))+'</div>')+audit+'</div>'; return html;
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+ownerBadge+(isUrl?'<a href="'+url+'" target="_blank" class="qa-readonly-link"><i class="bi bi-box-arrow-up-right me-2"></i>'+url+'</a>':'<div class="qa-readonly-val">'+nlToBr(String(v))+'</div>')+audit+'</div>'; return html;
     }
     if(f.type==="money"){
-      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div><div class="qa-readonly-money">'+_formatMoneyRO(v)+'</div>'+audit+'</div>'; return html;
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+ownerBadge+'<div class="qa-readonly-money">'+_formatMoneyRO(v)+'</div>'+audit+'</div>'; return html;
     }
     if(f.type==="toggle"){
       var isOn=v==="ON"||v==="Y"||v===true||v==="true";
-      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div><span class="'+(isOn?"qa-readonly-toggle-on":"qa-readonly-toggle-off")+'">'+(isOn?"✅ เปิด":"❌ ปิด")+'</span>'+audit+'</div>'; return html;
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+ownerBadge+'<span class="'+(isOn?"qa-readonly-toggle-on":"qa-readonly-toggle-off")+'">'+(isOn?"✅ เปิด":"❌ ปิด")+'</span>'+audit+'</div>'; return html;
     }
     if(f.type==="toggle-group"){
       var tgItems = f.items && f.items.length ? f.items : [];
@@ -751,7 +765,7 @@ function _renderOneFieldRO(f, dataObj) {
         var isOn2 = dataObj[f.key+"_tog"+ii] === "ON";
         return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;"><span style="font-size:1rem;">'+(isOn2?"✅":"⬜")+'</span><span style="font-size:.9rem;">'+escHtml(lb)+'</span></div>';
       }).join("");
-      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+(tgRows||'<div class="qa-readonly-val">-</div>')+audit+'</div>'; return html;
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+ownerBadge+(tgRows||'<div class="qa-readonly-val">-</div>')+audit+'</div>'; return html;
     }
     if(f.type==="checkbox-group"){
       var cbItems = f.items && f.items.length ? f.items : [];
@@ -760,7 +774,7 @@ function _renderOneFieldRO(f, dataObj) {
         var isChk = chkVal && chkVal !== "";
         return '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;"><span style="font-size:1rem;">'+(isChk?"☑":"☐")+'</span><span style="font-size:.9rem;">'+escHtml(lb)+'</span></div>';
       }).join("");
-      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+(cbRows||'<div class="qa-readonly-val">-</div>')+audit+'</div>'; return html;
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+ownerBadge+(cbRows||'<div class="qa-readonly-val">-</div>')+audit+'</div>'; return html;
     }
     if(f.type==="choice-grid"){
       var cgRows = f.gridRows || [];
@@ -775,7 +789,7 @@ function _renderOneFieldRO(f, dataObj) {
         return '<tr>'+cells+'</tr>';
       }).join("");
       var cgTable = cgRows.length ? '<div class="table-responsive"><table class="qa-grid-table" style="font-size:.85rem;"><thead><tr>'+cgHds+'</tr></thead><tbody>'+cgBdy+'</tbody></table></div>' : '<div class="qa-readonly-val">-</div>';
-      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+cgTable+audit+'</div>'; return html;
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+ownerBadge+cgTable+audit+'</div>'; return html;
     }
     if(f.type==="tick-grid"){
       var tkRows = f.gridRows || [];
@@ -790,9 +804,9 @@ function _renderOneFieldRO(f, dataObj) {
         return '<tr>'+cells+'</tr>';
       }).join("");
       var tkTable = tkRows.length ? '<div class="table-responsive"><table class="qa-grid-table" style="font-size:.85rem;"><thead><tr>'+tkHds+'</tr></thead><tbody>'+tkBdy+'</tbody></table></div>' : '<div class="qa-readonly-val">-</div>';
-      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+tkTable+audit+'</div>'; return html;
+      html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+ownerBadge+tkTable+audit+'</div>'; return html;
     }
-    html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div><div class="qa-readonly-val">'+nlToBr(String(v))+'</div>'+audit+'</div>';
+    html+='<div class="mb-3"><div class="qa-label">'+nlToBr(f.label)+'</div>'+ownerBadge+'<div class="qa-readonly-val">'+nlToBr(String(v))+'</div>'+audit+'</div>';
     return html;
 }
 
