@@ -392,7 +392,36 @@ function _renderFormProgressGrid(containerId, year) {
 
     var pct = totalPoints > 0 ? Math.round(completedPoints / totalPoints * 100) : 0;
     var sColor = pct === 100 ? "var(--success)" : (pct > 0 ? "var(--warning)" : "var(--danger)");
-    var subInfo = isShared ? '<span style="color:var(--info);font-weight:600;">ฟอร์มส่วนกลาง</span>' : ('เป้าหมาย ' + activeSections.length + ' Section');
+    // คำนวณ subInfo: แสดง Section ที่รับผิดชอบจริงๆ (ไม่ใช่แค่ totalCount)
+    var subInfo;
+    if (isShared) {
+      subInfo = '<span style="color:var(--info);font-weight:600;">ฟอร์มส่วนกลาง</span>';
+    } else {
+      // รวบรวม sectionIds จากทุก field (ไม่นับ divider/image)
+      var _respSecIds = [], _hasOpenField = false;
+      (form.fields || []).forEach(function(field) {
+        if (field.type === "divider" || field.type === "image") return;
+        if (!field.sectionIds || !field.sectionIds.length) {
+          _hasOpenField = true;
+        } else {
+          field.sectionIds.forEach(function(sid){ if (_respSecIds.indexOf(sid) < 0) _respSecIds.push(sid); });
+        }
+      });
+      if (_hasOpenField || !_respSecIds.length) {
+        // มีอย่างน้อย 1 field ที่ไม่ระบุ section = ทุก section เห็น
+        subInfo = 'เป้าหมาย ' + activeSections.length + ' Section';
+      } else {
+        // ทุก field มี sectionIds ระบุ → แสดงชื่อ Section ที่รับผิดชอบ
+        var _respSecs = activeSections.filter(function(s){ return _respSecIds.indexOf(s.sectionId) >= 0; });
+        if (!_respSecs.length) {
+          subInfo = 'เป้าหมาย ' + activeSections.length + ' Section';
+        } else if (_respSecs.length <= 3) {
+          subInfo = _respSecs.map(function(s){ return escHtml(s.sectionName); }).join(', ');
+        } else {
+          subInfo = _respSecs.slice(0,2).map(function(s){ return escHtml(s.sectionName); }).join(', ') + ' + อีก ' + (_respSecs.length - 2) + ' Section';
+        }
+      }
+    }
     var gHasData = Object.keys(gDataObj).some(function(k){ return !k.endsWith("__by")&&!k.endsWith("__at")&&!k.endsWith("_total_rows")&&gDataObj[k]!==""; });
     var viewBtn = "";
     if (isShared && (gRow || gHasData)) {
