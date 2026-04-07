@@ -653,18 +653,18 @@ function executeDelete() {
   } else if (type === "dt-group") {
     _dtInit();
     var dtGi = parseInt(id, 10);
-    if (!isNaN(dtGi)) { _dtData.groups.splice(dtGi, 1); _dtRender(); showToast('ลบหัวข้อใหญ่ "'+name+'" สำเร็จ', "success"); }
+    if (!isNaN(dtGi)) { _dtData.groups.splice(dtGi, 1); _dtRender(); showToast('ลบหัวข้อใหญ่ "'+name+'" สำเร็จ', "success"); _dtSave(); }
     reset();
   } else if (type === "dt-item") {
     _dtInit();
     var dtIP = id.split(":"), dtGiI = parseInt(dtIP[0],10), dtIiI = parseInt(dtIP[1],10);
-    if (_dtData.groups[dtGiI] && _dtData.groups[dtGiI].items) { _dtData.groups[dtGiI].items.splice(dtIiI, 1); _dtRender(); showToast('ลบหัวข้อย่อย "'+name+'" สำเร็จ', "success"); }
+    if (_dtData.groups[dtGiI] && _dtData.groups[dtGiI].items) { _dtData.groups[dtGiI].items.splice(dtIiI, 1); _dtRender(); showToast('ลบหัวข้อย่อย "'+name+'" สำเร็จ', "success"); _dtSave(); }
     reset();
   } else if (type === "dt-status") {
     _dtInit();
     var dtSP = id.split(":"), dtGiS = parseInt(dtSP[0],10), dtIiS = parseInt(dtSP[1],10), dtSiS = parseInt(dtSP[2],10);
     var dtItm = (_dtData.groups[dtGiS]||{}).items && _dtData.groups[dtGiS].items[dtIiS];
-    if (dtItm && dtItm.statuses) { dtItm.statuses.splice(dtSiS, 1); _dtRender(); showToast('ลบสถานะ "'+name+'" สำเร็จ', "success"); }
+    if (dtItm && dtItm.statuses) { dtItm.statuses.splice(dtSiS, 1); _dtRender(); showToast('ลบสถานะ "'+name+'" สำเร็จ', "success"); _dtSave(); }
     reset();
   }
 }
