@@ -552,9 +552,15 @@
             <h6 style="margin:0;font-weight:700;"><i class="bi bi-check2-square me-2" style="color:var(--primary);font-size:1.2rem;"></i>ติดตามความคืบหน้าเอกสาร</h6>
             <p class="text-muted small mb-0">กำหนดหัวข้อ หัวข้อย่อย และสถานะสำหรับแสดงความคืบหน้าในหน้าแรก</p>
           </div>
-          <button class="qa-btn-primary" onclick="_dtSave()">
-            <i class="bi bi-save-fill me-1"></i>บันทึกการเปลี่ยนแปลง
-          </button>
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <div>
+              <div class="text-muted small mb-1">ปีการศึกษา</div>
+              <select id="dt-year-select" class="qa-year-sel" onchange="_dtOnYearChange(this.value)"></select>
+            </div>
+            <button class="qa-btn-primary" onclick="_dtSave()">
+              <i class="bi bi-save-fill me-1"></i>บันทึกโครงสร้าง
+            </button>
+          </div>
         </div>
         <div id="dt-admin-container"></div>
         <button class="qa-btn-ghost w-100 mt-3" onclick="_dtAddGroup()" style="border:1.5px dashed var(--border);border-radius:var(--r-sm);padding:10px;">

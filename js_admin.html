@@ -1668,13 +1668,21 @@ function runAllMaintenance(btn) {
 // DOC TRACKING ADMIN
 // ══════════════════════════════════════════════════════════
 
-var _dtData = null; // working copy
+var _dtData = null;       // template (structure only, no checked)
+var _dtYear = "";         // currently selected year for progress
+var _dtProgress = {};     // cache: { "year": { statusId: bool } }
+var _dtCollapsed = {};    // { groupId: bool } for collapse/expand state
 
 function _dtInit() {
-  if (!_dtData) {
-    var src = APP.docTracking || { groups: [] };
-    _dtData = JSON.parse(JSON.stringify(src)); // deep clone
-  }
+  if (_dtData) return;
+  var src = APP.docTracking || { groups: [] };
+  _dtData = JSON.parse(JSON.stringify(src));
+  // Migrate: strip old 'checked' from template (old data had checked embedded)
+  (_dtData.groups||[]).forEach(function(g){
+    (g.items||[]).forEach(function(it){
+      (it.statuses||[]).forEach(function(s){ delete s.checked; });
+    });
+  });
 }
 
 function _dtUid() {
@@ -1683,6 +1691,54 @@ function _dtUid() {
 
 function renderDocTrackingAdmin() {
   _dtData = null; _dtInit();
+  // Default year: last open year, or last year in settings
+  if (!_dtYear) {
+    var settings = APP.settings || [];
+    var open = settings.filter(function(s){ return s.isOpen; });
+    _dtYear = open.length ? String(open[open.length-1].year)
+            : settings.length ? String(settings[settings.length-1].year) : "";
+  }
+  // Populate year selector
+  var ySel = document.getElementById("dt-year-select");
+  if (ySel && ySel.options.length === 0) {
+    (APP.settings||[]).forEach(function(s){
+      ySel.add(new Option((s.isOpen?"★ ":"")+"ปีการศึกษา "+s.year, String(s.year)));
+    });
+  }
+  if (ySel) ySel.value = _dtYear;
+  // Load progress for year then render
+  _dtLoadProgress(_dtYear, function(){ _dtRender(); });
+}
+
+function _dtOnYearChange(year) {
+  _dtYear = year;
+  _dtLoadProgress(year, function(){ _dtRender(); });
+}
+
+function _dtLoadProgress(year, callback) {
+  if (!year) { if (callback) callback(); return; }
+  if (_dtProgress[year] !== undefined) { if (callback) callback(); return; }
+  var el = document.getElementById("dt-admin-container");
+  if (el) el.innerHTML = '<div class="text-center py-4"><div class="qa-spinner"></div><p class="text-muted small mt-2">กำลังโหลดปี '+escHtml(year)+'...</p></div>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      _dtProgress[year] = (res && res.data) ? res.data : {};
+      if (callback) callback();
+    })
+    .withFailureHandler(function() {
+      _dtProgress[year] = {};
+      if (callback) callback();
+    })
+    .getDocTrackingProgress(year);
+}
+
+function _dtGetChecked(statusId) {
+  var prog = _dtProgress[_dtYear] || {};
+  return !!prog[statusId];
+}
+
+function _dtToggleCollapse(groupId) {
+  _dtCollapsed[groupId] = !_dtCollapsed[groupId];
   _dtRender();
 }
 
@@ -1696,48 +1752,44 @@ function _dtRender() {
   }
   var html = "";
   groups.forEach(function(g, gi) {
-    // คำนวณ progress ของกลุ่ม
+    var gId = g.groupId || String(gi);
+    var isCollapsed = !!_dtCollapsed[gId];
     var gTotal = 0, gDone = 0;
     (g.items || []).forEach(function(it) {
-      (it.statuses || []).forEach(function(s) { gTotal++; if (s.checked) gDone++; });
+      (it.statuses || []).forEach(function(s) { gTotal++; if (_dtGetChecked(s.statusId)) gDone++; });
     });
     var gPct = gTotal > 0 ? Math.round(gDone / gTotal * 100) : 0;
     var gColor = gPct >= 100 ? "#059669" : gPct >= 50 ? "#2563eb" : "#f59e0b";
 
     html += '<div class="qa-glass-card p-0 mb-3" style="border:1.5px solid var(--border);border-radius:var(--r-sm);overflow:hidden;">'
-      // ── หัวกลุ่ม ──
       + '<div style="background:var(--surface-2);padding:10px 14px;display:flex;align-items:center;gap:8px;">'
+      + '<button onclick="_dtToggleCollapse(\''+escHtml(gId)+'\')" style="background:none;border:none;cursor:pointer;padding:2px 6px;color:var(--txt-muted);flex-shrink:0;font-size:.85rem;" title="พับ/ขยาย">'
+      + '<i class="bi bi-chevron-'+(isCollapsed?'right':'down')+'"></i></button>'
       + '<i class="bi bi-folder2-open" style="color:var(--primary);font-size:1.1rem;flex-shrink:0;"></i>'
-      + '<input type="text" value="'+escHtml(g.title||"")
-      + '" onchange="_dtGroupTitle('+gi+',this.value)" class="qa-input py-1" style="flex:1;font-weight:700;font-size:.9rem;" placeholder="ชื่อหัวข้อใหญ่...">'
+      + '<input type="text" value="'+escHtml(g.title||"")+'" onchange="_dtGroupTitle('+gi+',this.value)" class="qa-input py-1" style="flex:1;font-weight:700;font-size:.9rem;" placeholder="ชื่อหัวข้อใหญ่...">'
       + '<span style="font-size:.78rem;font-weight:700;color:'+gColor+';min-width:36px;text-align:right;">'+gPct+'%</span>'
       + '<button class="qa-btn-ghost btn-sm" onclick="_dtDeleteGroup('+gi+')" title="ลบหัวข้อใหญ่" style="color:var(--danger);padding:4px 8px;"><i class="bi bi-trash-fill"></i></button>'
       + '</div>'
-      // ── รายการ items ──
-      + '<div style="padding:10px 14px;">';
+      + '<div style="padding:10px 14px;'+(isCollapsed?'display:none;':'')+'">'; // collapsible
 
     (g.items || []).forEach(function(it, ii) {
       var itTotal = (it.statuses || []).length;
-      var itDone  = (it.statuses || []).filter(function(s){return s.checked;}).length;
+      var itDone  = (it.statuses || []).filter(function(s){ return _dtGetChecked(s.statusId); }).length;
 
       html += '<div style="background:var(--surface-1,var(--surface));border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:8px;">'
-        // item header
         + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'
         + '<i class="bi bi-file-earmark-text" style="color:var(--primary);opacity:.7;flex-shrink:0;"></i>'
-        + '<input type="text" value="'+escHtml(it.title||"")
-        + '" onchange="_dtItemTitle('+gi+','+ii+',this.value)" class="qa-input py-1" style="flex:1;font-size:.85rem;" placeholder="ชื่อหัวข้อย่อย...">'
+        + '<input type="text" value="'+escHtml(it.title||"")+'" onchange="_dtItemTitle('+gi+','+ii+',this.value)" class="qa-input py-1" style="flex:1;font-size:.85rem;" placeholder="ชื่อหัวข้อย่อย...">'
         + '<span style="font-size:.75rem;color:var(--txt-muted);min-width:30px;text-align:right;">'+itDone+'/'+itTotal+'</span>'
         + '<button class="qa-btn-ghost btn-sm" onclick="_dtDeleteItem('+gi+','+ii+')" title="ลบหัวข้อย่อย" style="color:var(--danger);padding:3px 7px;"><i class="bi bi-trash"></i></button>'
         + '</div>'
-        // statuses
         + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">';
 
       (it.statuses || []).forEach(function(s, si) {
-        var chk = !!s.checked;
+        var chk = _dtGetChecked(s.statusId);
         html += '<div style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:20px;border:1.5px solid '
           + (chk ? '#16a34a' : 'var(--border)') + ';background:' + (chk ? '#dcfce7' : 'var(--surface-2)') + ';">'
-          + '<input type="checkbox" '+(chk?'checked':'')
-          + ' onchange="_dtToggleStatus('+gi+','+ii+','+si+',this.checked)" style="cursor:pointer;accent-color:#16a34a;">'
+          + '<input type="checkbox" '+(chk?'checked':'')+' onchange="_dtToggleStatus('+gi+','+ii+','+si+',this.checked)" style="cursor:pointer;accent-color:#16a34a;">'
           + '<input type="text" value="'+escHtml(s.label||"")+'" onchange="_dtStatusLabel('+gi+','+ii+','+si+',this.value)"'
           + ' class="qa-input py-0 px-1" style="border:none;background:transparent;font-size:.78rem;width:'
           + Math.max(80, (s.label||"").length * 9 + 20) + 'px;" placeholder="ชื่อสถานะ...">'
@@ -1776,14 +1828,18 @@ function _dtStatusLabel(gi, ii, si, val) {
 function _dtToggleStatus(gi, ii, si, checked) {
   _dtInit();
   var st = ((_dtData.groups[gi]||{}).items||[])[ii];
-  if (st && st.statuses && st.statuses[si]) st.statuses[si].checked = !!checked;
-  // อัปเดต badge ทันทีโดยไม่ re-render ทั้งหน้า
+  if (!st || !st.statuses || !st.statuses[si]) return;
+  var statusId = st.statuses[si].statusId;
+  if (!_dtProgress[_dtYear]) _dtProgress[_dtYear] = {};
+  _dtProgress[_dtYear][statusId] = !!checked;
   _dtRender();
+  _dtSaveProgress();
 }
 function _dtAddGroup() {
   _dtInit();
   _dtData.groups.push({ groupId: _dtUid(), title: "", items: [] });
   _dtRender();
+  _dtSave();
 }
 function _dtDeleteGroup(gi) {
   _dtInit();
@@ -1796,6 +1852,7 @@ function _dtAddItem(gi) {
   if (!_dtData.groups[gi].items) _dtData.groups[gi].items = [];
   _dtData.groups[gi].items.push({ itemId: _dtUid(), title: "", statuses: [] });
   _dtRender();
+  _dtSave();
 }
 function _dtDeleteItem(gi, ii) {
   _dtInit();
@@ -1808,8 +1865,9 @@ function _dtAddStatus(gi, ii) {
   var item = (_dtData.groups[gi]||{}).items && _dtData.groups[gi].items[ii];
   if (!item) return;
   if (!item.statuses) item.statuses = [];
-  item.statuses.push({ statusId: _dtUid(), label: "", checked: false });
+  item.statuses.push({ statusId: _dtUid(), label: "" });
   _dtRender();
+  _dtSave();
 }
 function _dtDeleteStatus(gi, ii, si) {
   _dtInit();
@@ -1817,32 +1875,46 @@ function _dtDeleteStatus(gi, ii, si) {
   var name = (item && item.statuses && item.statuses[si] && item.statuses[si].label) || "(ไม่มีชื่อ)";
   openDeleteConfirm("dt-status", gi + ":" + ii + ":" + si, name);
 }
+function _dtSaveProgress() {
+  if (!_dtYear) return;
+  var prog = _dtProgress[_dtYear] || {};
+  google.script.run
+    .withSuccessHandler(function(){})
+    .withFailureHandler(function(err){ showToast("บันทึกไม่สำเร็จ: "+(err.message||err), "danger"); })
+    .saveDocTrackingProgress(_dtYear, JSON.stringify(prog));
+}
 function _dtSave() {
   _dtInit();
-  // sync input values ก่อน save (browser อาจยังไม่ fire onchange ถ้ายังอยู่ใน focus)
   var el = document.getElementById("dt-admin-container");
   if (el) {
     el.querySelectorAll("input[type='text']").forEach(function(inp) {
       inp.dispatchEvent(new Event("change"));
     });
   }
+  // Clone and strip checked before saving template
+  var templateData = JSON.parse(JSON.stringify(_dtData));
+  (templateData.groups||[]).forEach(function(g){
+    (g.items||[]).forEach(function(it){
+      (it.statuses||[]).forEach(function(s){ delete s.checked; });
+    });
+  });
   var btn = document.querySelector("#tab-doc-tracking .qa-btn-primary");
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>กำลังบันทึก...'; }
   google.script.run
     .withSuccessHandler(function(res) {
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึกการเปลี่ยนแปลง'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึกโครงสร้าง'; }
       if (res && res.success) {
         APP.docTracking = JSON.parse(JSON.stringify(_dtData));
-        showToast("บันทึกสำเร็จ", "success");
+        showToast("บันทึกโครงสร้างสำเร็จ", "success");
       } else {
         showToast((res && res.message) || "บันทึกไม่สำเร็จ", "danger");
       }
     })
     .withFailureHandler(function(err) {
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึกการเปลี่ยนแปลง'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึกโครงสร้าง'; }
       showToast(err.message || err, "danger");
     })
-    .saveDocTracking(JSON.stringify(_dtData));
+    .saveDocTracking(JSON.stringify(templateData));
 }
 
 </script>

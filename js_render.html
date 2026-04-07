@@ -1198,22 +1198,89 @@ function renderAdminCharts(sub, pend, yd){
 // ══════════════════════════════════════════════════════════
 // PUBLIC: แสดงความคืบหน้าการส่งเอกสาร
 // ══════════════════════════════════════════════════════════
+var _dtPubYear = "";
+var _dtPubProgress = {}; // cache: { "year": { statusId: bool } }
+
+function _dtPubOnYearChange(year) {
+  _dtPubYear = year;
+  if (_dtPubProgress[year] !== undefined) {
+    _dtPubDoRender(_dtPubProgress[year]);
+  } else {
+    var ctn = document.getElementById("dt-pub-content");
+    if (ctn) ctn.innerHTML = '<div class="text-center py-4"><div class="qa-spinner"></div></div>';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        _dtPubProgress[year] = (res && res.data) ? res.data : {};
+        _dtPubDoRender(_dtPubProgress[year]);
+      })
+      .withFailureHandler(function() {
+        _dtPubProgress[year] = {};
+        _dtPubDoRender({});
+      })
+      .getDocTrackingProgress(year);
+  }
+}
+
 function renderDocTrackingPublic() {
   var el = document.getElementById("doc-tracking-public-container");
   if (!el) return;
+
+  // Initialize year: last open year or last settings year
+  if (!_dtPubYear) {
+    var settings = APP.settings || [];
+    var open = settings.filter(function(s){ return s.isOpen; });
+    _dtPubYear = open.length ? String(open[open.length-1].year)
+               : settings.length ? String(settings[settings.length-1].year) : "";
+  }
+
+  // Build year selector
+  var yearOptions = (APP.settings||[]).map(function(s){
+    return '<option value="'+s.year+'"'+(String(s.year)===_dtPubYear?' selected':'')+'>ปีการศึกษา '+s.year+'</option>';
+  }).join("");
+  var yearSelHtml = (APP.settings||[]).length > 1
+    ? '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">'
+      + '<span style="font-size:.85rem;font-weight:600;color:var(--txt-muted);">ปีการศึกษา:</span>'
+      + '<select class="qa-year-sel" onchange="_dtPubOnYearChange(this.value)">'+yearOptions+'</select>'
+      + '</div>'
+    : '';
+
+  el.innerHTML = yearSelHtml + '<div id="dt-pub-content"><div class="text-center py-4"><div class="qa-spinner"></div></div></div>';
+
+  // Load progress
+  if (_dtPubProgress[_dtPubYear] !== undefined) {
+    _dtPubDoRender(_dtPubProgress[_dtPubYear]);
+  } else {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        _dtPubProgress[_dtPubYear] = (res && res.data) ? res.data : {};
+        _dtPubDoRender(_dtPubProgress[_dtPubYear]);
+      })
+      .withFailureHandler(function() {
+        _dtPubProgress[_dtPubYear] = {};
+        _dtPubDoRender({});
+      })
+      .getDocTrackingProgress(_dtPubYear);
+  }
+}
+
+function _dtPubDoRender(prog) {
+  var container = document.getElementById("dt-pub-content");
+  if (!container) return;
   var dt = APP.docTracking || { groups: [] };
   var groups = dt.groups || [];
 
+  function isChk(sid) { return !!prog[sid]; }
+
   if (!groups.length) {
-    el.innerHTML = '<div class="qa-glass-card p-5 text-center"><i class="bi bi-check2-square" style="font-size:3rem;color:var(--primary);opacity:.4;"></i><p class="text-muted mt-3 mb-0">ยังไม่มีข้อมูลความคืบหน้าเอกสาร</p></div>';
+    container.innerHTML = '<div class="qa-glass-card p-5 text-center"><i class="bi bi-check2-square" style="font-size:3rem;color:var(--primary);opacity:.4;"></i><p class="text-muted mt-3 mb-0">ยังไม่มีข้อมูลความคืบหน้าเอกสาร</p></div>';
     return;
   }
 
-  // คำนวณ progress รวม
+  // Overall progress
   var totalSt = 0, doneSt = 0;
   groups.forEach(function(g) {
     (g.items || []).forEach(function(it) {
-      (it.statuses || []).forEach(function(s) { totalSt++; if (s.checked) doneSt++; });
+      (it.statuses || []).forEach(function(s) { totalSt++; if (isChk(s.statusId)) doneSt++; });
     });
   });
   var overallPct = totalSt > 0 ? Math.round(doneSt / totalSt * 100) : 0;
@@ -1233,7 +1300,7 @@ function renderDocTrackingPublic() {
   groups.forEach(function(g) {
     var gTotal = 0, gDone = 0;
     (g.items || []).forEach(function(it) {
-      (it.statuses || []).forEach(function(s) { gTotal++; if (s.checked) gDone++; });
+      (it.statuses || []).forEach(function(s) { gTotal++; if (isChk(s.statusId)) gDone++; });
     });
     var gPct = gTotal > 0 ? Math.round(gDone / gTotal * 100) : 0;
     var gColor = gPct >= 100 ? "#059669" : gPct >= 50 ? "#2563eb" : "#f59e0b";
@@ -1254,7 +1321,7 @@ function renderDocTrackingPublic() {
 
     (g.items || []).forEach(function(it) {
       var itTotal = (it.statuses || []).length;
-      var itDone  = (it.statuses || []).filter(function(s){return s.checked;}).length;
+      var itDone  = (it.statuses || []).filter(function(s){ return isChk(s.statusId); }).length;
       var itPct   = itTotal > 0 ? Math.round(itDone / itTotal * 100) : 0;
 
       html += '<div style="background:var(--surface-2);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:8px;">'
@@ -1265,7 +1332,7 @@ function renderDocTrackingPublic() {
         + '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
 
       (it.statuses || []).forEach(function(s) {
-        var chk = s.checked;
+        var chk = isChk(s.statusId);
         html += '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:.78rem;font-weight:600;'
           + (chk ? 'background:#dcfce7;color:#15803d;' : 'background:var(--surface-3,rgba(0,0,0,.05));color:var(--txt-muted);') + '">'
           + (chk ? '<i class="bi bi-check-circle-fill"></i>' : '<i class="bi bi-circle"></i>')
@@ -1281,7 +1348,7 @@ function renderDocTrackingPublic() {
     html += '</div>';
   });
 
-  el.innerHTML = html;
+  container.innerHTML = html;
 }
 
 function loadVisitStats(){
