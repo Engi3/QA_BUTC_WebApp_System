@@ -16,6 +16,12 @@ function buildSectionCards(sections, yearData, containerId, year) {
   var sharedLastUpdate = null, sharedSubmitter = "";
   yearData.forEach(function(d) {
     if (d.sectionId && d.sectionId.indexOf("GLOBAL_") === 0 && d.dataJson) {
+      // ตรวจว่าฟอร์มนี้ยังคงเป็น shared form อยู่หรือไม่
+      // ถ้าแอดมินเพิ่ง update sectionIds ให้ฟิลด์แล้ว → ฟอร์มนี้เป็น section-specific → ข้ามไป
+      var _gFormId = d.sectionId.replace("GLOBAL_", "");
+      var _gForm = null;
+      for (var _gfi=0; _gfi<(APP.forms||[]).length; _gfi++) { if (APP.forms[_gfi].formId===_gFormId) { _gForm=APP.forms[_gfi]; break; } }
+      if (_gForm && typeof _isSharedForm === 'function' && !_isSharedForm(_gForm)) return;
       try {
         var gd = JSON.parse(d.dataJson);
         Object.keys(gd).forEach(function(k) { if (!(k in sharedDataObj)) sharedDataObj[k] = gd[k]; });
