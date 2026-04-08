@@ -1706,30 +1706,32 @@ function renderDocTrackingAdmin() {
     });
   }
   if (ySel) ySel.value = _dtYear;
-  // Load progress for year then render
-  _dtLoadProgress(_dtYear, function(){ _dtRender(); });
+  // Render structure immediately (progress may be empty until GAS call returns)
+  _dtRender();
+  // Load progress asynchronously and re-render when done
+  if (_dtYear && _dtProgress[_dtYear] === undefined) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        _dtProgress[_dtYear] = (res && res.data) ? res.data : {};
+        _dtRender();
+      })
+      .withFailureHandler(function() { _dtProgress[_dtYear] = {}; })
+      .getDocTrackingProgress(_dtYear);
+  }
 }
 
 function _dtOnYearChange(year) {
   _dtYear = year;
-  _dtLoadProgress(year, function(){ _dtRender(); });
-}
-
-function _dtLoadProgress(year, callback) {
-  if (!year) { if (callback) callback(); return; }
-  if (_dtProgress[year] !== undefined) { if (callback) callback(); return; }
-  var el = document.getElementById("dt-admin-container");
-  if (el) el.innerHTML = '<div class="text-center py-4"><div class="qa-spinner"></div><p class="text-muted small mt-2">กำลังโหลดปี '+escHtml(year)+'...</p></div>';
-  google.script.run
-    .withSuccessHandler(function(res) {
-      _dtProgress[year] = (res && res.data) ? res.data : {};
-      if (callback) callback();
-    })
-    .withFailureHandler(function() {
-      _dtProgress[year] = {};
-      if (callback) callback();
-    })
-    .getDocTrackingProgress(year);
+  _dtRender(); // show structure immediately with cached/empty progress
+  if (_dtProgress[year] === undefined) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        _dtProgress[year] = (res && res.data) ? res.data : {};
+        _dtRender();
+      })
+      .withFailureHandler(function() { _dtProgress[year] = {}; })
+      .getDocTrackingProgress(year);
+  }
 }
 
 function _dtGetChecked(statusId) {

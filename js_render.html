@@ -1200,6 +1200,12 @@ function renderAdminCharts(sub, pend, yd){
 // ══════════════════════════════════════════════════════════
 var _dtPubYear = "";
 var _dtPubProgress = {}; // cache: { "year": { statusId: bool } }
+var _dtPubCollapsed = {}; // { groupId: bool }
+
+function _dtPubToggleCollapse(groupId) {
+  _dtPubCollapsed[groupId] = !_dtPubCollapsed[groupId];
+  _dtPubDoRender(_dtPubProgress[_dtPubYear] || {});
+}
 
 function _dtPubOnYearChange(year) {
   _dtPubYear = year;
@@ -1244,21 +1250,19 @@ function renderDocTrackingPublic() {
       + '</div>'
     : '';
 
-  el.innerHTML = yearSelHtml + '<div id="dt-pub-content"><div class="text-center py-4"><div class="qa-spinner"></div></div></div>';
+  el.innerHTML = yearSelHtml + '<div id="dt-pub-content"></div>';
 
-  // Load progress
-  if (_dtPubProgress[_dtPubYear] !== undefined) {
-    _dtPubDoRender(_dtPubProgress[_dtPubYear]);
-  } else {
+  // Render structure immediately with cached/empty progress
+  _dtPubDoRender(_dtPubProgress[_dtPubYear] || {});
+
+  // Load progress asynchronously and update if not yet cached
+  if (_dtPubYear && _dtPubProgress[_dtPubYear] === undefined) {
     google.script.run
       .withSuccessHandler(function(res) {
         _dtPubProgress[_dtPubYear] = (res && res.data) ? res.data : {};
         _dtPubDoRender(_dtPubProgress[_dtPubYear]);
       })
-      .withFailureHandler(function() {
-        _dtPubProgress[_dtPubYear] = {};
-        _dtPubDoRender({});
-      })
+      .withFailureHandler(function() { _dtPubProgress[_dtPubYear] = {}; })
       .getDocTrackingProgress(_dtPubYear);
   }
 }
@@ -1298,6 +1302,8 @@ function _dtPubDoRender(prog) {
     + '</div>';
 
   groups.forEach(function(g) {
+    var gId = g.groupId || g.title || String(groups.indexOf(g));
+    var isCollapsed = !!_dtPubCollapsed[gId];
     var gTotal = 0, gDone = 0;
     (g.items || []).forEach(function(it) {
       (it.statuses || []).forEach(function(s) { gTotal++; if (isChk(s.statusId)) gDone++; });
@@ -1306,7 +1312,7 @@ function _dtPubDoRender(prog) {
     var gColor = gPct >= 100 ? "#059669" : gPct >= 50 ? "#2563eb" : "#f59e0b";
 
     html += '<div class="qa-glass-card p-4 mb-3">'
-      + '<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">'
+      + '<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3" style="cursor:pointer;" onclick="_dtPubToggleCollapse(\''+escHtml(gId)+'\')">'
       + '<div style="display:flex;align-items:center;gap:10px;">'
       + '<div style="width:36px;height:36px;border-radius:8px;background:rgba(37,99,235,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
       + '<i class="bi bi-folder2-open" style="color:var(--primary);font-size:1.1rem;"></i>'
@@ -1314,10 +1320,14 @@ function _dtPubDoRender(prog) {
       + '<div><div style="font-weight:700;font-size:.95rem;color:var(--txt-1);">'+escHtml(g.title||"(ไม่มีชื่อ)")+'</div>'
       + '<div style="font-size:.75rem;color:var(--txt-muted);">'+gDone+' / '+gTotal+' สถานะ</div></div>'
       + '</div>'
+      + '<div style="display:flex;align-items:center;gap:10px;">'
       + '<span style="font-size:1.1rem;font-weight:800;color:'+gColor+';">'+gPct+'%</span>'
+      + '<i class="bi bi-chevron-'+(isCollapsed?'down':'up')+'" style="color:var(--txt-muted);font-size:.85rem;"></i>'
       + '</div>'
-      + '<div style="background:var(--surface-2);border-radius:6px;height:6px;overflow:hidden;margin-bottom:16px;">'
-      + '<div style="height:100%;background:'+gColor+';border-radius:6px;width:'+gPct+'%;transition:width .5s;"></div></div>';
+      + '</div>'
+      + '<div style="'+(isCollapsed?'display:none;':'')+'background:var(--surface-2);border-radius:6px;height:6px;overflow:hidden;margin-bottom:16px;">'
+      + '<div style="height:100%;background:'+gColor+';border-radius:6px;width:'+gPct+'%;transition:width .5s;"></div></div>'
+      + '<div style="'+(isCollapsed?'display:none;':'')+'">'; // collapsible items section
 
     (g.items || []).forEach(function(it) {
       var itTotal = (it.statuses || []).length;
@@ -1345,7 +1355,7 @@ function _dtPubDoRender(prog) {
     if (!g.items || !g.items.length) {
       html += '<p class="text-muted small text-center py-2 mb-0">ยังไม่มีหัวข้อย่อย</p>';
     }
-    html += '</div>';
+    html += '</div></div>'; // close collapsible + card
   });
 
   container.innerHTML = html;
