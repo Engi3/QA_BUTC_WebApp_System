@@ -885,13 +885,15 @@ div[id$="-picker-modal"] > div {
 .qa-cselect-val.placeholder { color: var(--txt-muted); }
 .qa-cselect-arrow { flex-shrink: 0; font-size: .7rem; color: var(--txt-muted); transition: transform .15s; margin-top: 3px; }
 .qa-cselect-dropdown {
-  /* position + top/left/width/maxHeight ถูกตั้งผ่าน JS (_qaSelectOpen) แบบ position:fixed
-     เพื่อให้ dropdown ลอยเหนือ overflow:auto ของตาราง และไม่เลยขอบ viewport */
+  /* position/top/left/width/maxHeight ถูกตั้งผ่าน JS (_qaSelectOpen) แบบ position:fixed */
   z-index: 9999;
-  background: var(--glass-2, var(--surface)); border: 1.5px solid var(--border);
-  border-radius: var(--r-sm); box-shadow: var(--shadow-lg);
+  /* พื้นหลังทึบ 100% — ไม่ใช้ glass/semi-transparent เพื่อให้อ่านข้อความได้ชัด */
+  background: #ffffff;
+  border: 1.5px solid var(--border); border-radius: var(--r-sm);
+  box-shadow: 0 4px 20px rgba(0,0,0,.18);
   overflow-y: auto; display: none;
 }
+[data-theme="dark"] .qa-cselect-dropdown { background: #1e293b; }
 .qa-cselect-dropdown.open { display: block; }
 .qa-cselect-item {
   padding: 9px 12px; cursor: pointer; font-size: .82rem; color: var(--txt);

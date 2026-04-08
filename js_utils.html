@@ -313,32 +313,29 @@ function _qaSelectOpen(btn) {
   });
   if (!isOpen) {
     // ใช้ position:fixed + getBoundingClientRect เพื่อให้ dropdown ลอยเหนือ overflow:auto
-    // ของตาราง/container และไม่เลยขอบจอ
     var rect = btn.getBoundingClientRect();
     var vpW = window.innerWidth;
     var vpH = window.innerHeight;
-    var minW = Math.max(rect.width, 260); // กว้างพอให้อ่านข้อความยาวได้
-    // จัด left: เริ่มจากขอบซ้ายของปุ่ม แต่ clamp ไม่ให้เลยขอบขวา viewport
+    // กว้าง = max(ความกว้างปุ่ม, 240) แต่ไม่เกิน viewport - 16px
+    var minW = Math.min(Math.max(rect.width, 240), vpW - 16);
+    // จัด left: เริ่มจากขอบซ้ายของปุ่ม clamp ไม่ให้เลยขอบขวา
     var left = rect.left;
     if (left + minW > vpW - 8) left = Math.max(8, vpW - minW - 8);
     dd.style.position = 'fixed';
     dd.style.left = left + 'px';
     dd.style.width = minW + 'px';
     dd.style.right = 'auto';
-    // เปิดลงถ้ามีที่ว่าง มิฉะนั้นเปิดขึ้น
-    var spaceBelow = vpH - rect.bottom - 8;
-    var spaceAbove = rect.top - 8;
-    if (spaceBelow >= 150 || spaceBelow >= spaceAbove) {
-      dd.style.top = (rect.bottom + 2) + 'px';
-      dd.style.bottom = 'auto';
-      dd.style.maxHeight = Math.max(150, Math.min(300, spaceBelow)) + 'px';
-    } else {
-      dd.style.top = 'auto';
-      dd.style.bottom = (vpH - rect.top + 2) + 'px';
-      dd.style.maxHeight = Math.max(150, Math.min(300, spaceAbove)) + 'px';
-    }
+    // แสดงใต้ปุ่มเสมอ — ปรับ maxHeight ตามพื้นที่ว่างด้านล่าง
+    dd.style.top = (rect.bottom + 2) + 'px';
+    dd.style.bottom = 'auto';
+    dd.style.maxHeight = Math.max(120, Math.min(300, vpH - rect.bottom - 8)) + 'px';
   }
   dd.classList.toggle('open', !isOpen);
+  // reset inline styles เมื่อปิด
+  if (isOpen) {
+    dd.style.position = ''; dd.style.top = ''; dd.style.bottom = '';
+    dd.style.left = ''; dd.style.right = ''; dd.style.width = ''; dd.style.maxHeight = '';
+  }
   btn.querySelector('.qa-cselect-arrow').style.transform = isOpen ? '' : 'rotate(180deg)';
 }
 
