@@ -531,15 +531,25 @@ function renderOneField(field) {
     case "select":
       var customId = 'custom-' + field.key;
       var si = (field.items && field.items.length) ? field.items : [];
-      var opts = '<option value="">-- เลือก --</option>' 
-               + si.map(function(o){ return '<option value="'+escHtml(o.trim())+'">'+escHtml(o.trim())+'</option>'; }).join("");
-      
+      var selItemsHtml = si.map(function(o){
+        var v = o.trim();
+        return '<div class="qa-cselect-item" data-value="'+escHtml(v)+'" onclick="_qaSelectPick(this)">'+escHtml(v)+'</div>';
+      }).join("");
       if (field.allowCustom) {
-        opts += '<option value="__custom__">-- กำหนดเอง (ระบุระบุรายละเอียดด้านล่าง) --</option>';
+        selItemsHtml += '<div class="qa-cselect-item" data-value="__custom__" onclick="_qaSelectPick(this)">-- กำหนดเอง --</div>';
       }
-
       return '<div class="mb-3">'+lbl+desc
-        +'<select class="qa-input" name="'+escHtml(field.key)+'" onchange="_onSelectCustomChange(this,\''+customId+'\')"'+(field.required?" required":"")+'>'+opts+'</select>'
+        +'<div class="qa-cselect" data-custom-id="'+customId+'"'+(field.required?' data-required="1"':'')+' data-fname="'+escHtml(field.key)+'">'
+        +'<input type="hidden" name="'+escHtml(field.key)+'" value="">'
+        +'<button type="button" class="qa-cselect-btn" onclick="_qaSelectOpen(this)">'
+        +'<span class="qa-cselect-val placeholder">-- เลือก --</span>'
+        +'<i class="bi bi-chevron-down qa-cselect-arrow"></i>'
+        +'</button>'
+        +'<div class="qa-cselect-dropdown">'
+        +'<div class="qa-cselect-item placeholder-item" data-value="" onclick="_qaSelectPick(this)">-- เลือก --</div>'
+        +selItemsHtml
+        +'</div>'
+        +'</div>'
         +(field.allowCustom ? '<textarea id="'+customId+'" name="'+escHtml(field.key)+'_custom" class="qa-input mt-2 auto-expand" placeholder="ระบุรายละเอียดเพิ่มเติม..." style="display:none; min-height:38px; resize:vertical;" oninput="autoExpand(this)"></textarea>' : '')
         +'</div>';
     case "radio":
@@ -723,6 +733,7 @@ function _fillAllFormsWithCurrentData(dashMap) {
     try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) { return; }
     _preExpandTableRows(formEl, dataObj); // create missing dynamic rows before filling
     fillFormData(formEl, dataObj);
+    _refreshQaSelects(formEl); // sync custom select displays after fillFormData (el.value= ไม่ fire events)
     // Re-trigger auto-sum for all table fields (fillFormData ใช้ el.value= ไม่ fire oninput)
     formEl.querySelectorAll('[name$="_table_def"]').forEach(function(metaEl) {
       var fkey = metaEl.name.replace(/_table_def$/, "");
@@ -974,6 +985,7 @@ function copySectionData(sectionId, formId) {
         if (pane) {
           _preExpandTableRows(pane, res.data); // create missing dynamic rows before filling
           fillFormData(pane, res.data);
+          _refreshQaSelects(pane); // sync custom select displays after fillFormData (el.value= ไม่ fire events)
           showToast("ดึงข้อมูลปี " + targetYear + " ลงฟอร์มสำเร็จ! (แก้ไขและกดบันทึกได้เลย)", "success");
         }
       } else {

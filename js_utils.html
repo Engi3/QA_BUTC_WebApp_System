@@ -296,5 +296,96 @@ function buildDeptChips(containerId, selectedDeptIds) {
   buildChipGrid(containerId, items, selectedDeptIds||[], { title: "คลิกเพื่อเลือก Department (ฝ่าย)" });
 }
 
+// ── Custom Select Dropdown (qa-cselect) ─────────────────────────
+// แทน native <select> เพื่อให้ option text ขึ้นบรรทัดใหม่ได้เมื่อยาว
+
+function _qaSelectOpen(btn) {
+  var wrapper = btn.closest('.qa-cselect');
+  var dd = wrapper.querySelector('.qa-cselect-dropdown');
+  var isOpen = dd.classList.contains('open');
+  // ปิด dropdown อื่นๆ ทั้งหมดก่อน
+  document.querySelectorAll('.qa-cselect-dropdown.open').forEach(function(d) {
+    if (d !== dd) {
+      d.classList.remove('open');
+      var arr = d.closest('.qa-cselect').querySelector('.qa-cselect-arrow');
+      if (arr) arr.style.transform = '';
+    }
+  });
+  dd.classList.toggle('open', !isOpen);
+  btn.querySelector('.qa-cselect-arrow').style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+
+function _qaSelectPick(item) {
+  var wrapper = item.closest('.qa-cselect');
+  var val = item.dataset.value;
+  // อัปเดต hidden input (ใช้สำหรับบันทึกข้อมูล + fillFormData)
+  var hidden = wrapper.querySelector('input[type="hidden"]');
+  if (hidden) hidden.value = val;
+  // อัปเดต display button (แสดงข้อความของ item แทน raw value เพื่อรองรับ __custom__)
+  var valEl = wrapper.querySelector('.qa-cselect-val');
+  if (valEl) {
+    valEl.textContent = item.textContent || val || '-- เลือก --';
+    valEl.classList.toggle('placeholder', !val);
+  }
+  // อัปเดต selected class
+  wrapper.querySelectorAll('.qa-cselect-item').forEach(function(i) {
+    i.classList.toggle('selected', i === item);
+  });
+  // ปิด dropdown
+  var dd = wrapper.querySelector('.qa-cselect-dropdown');
+  if (dd) dd.classList.remove('open');
+  var arr = wrapper.querySelector('.qa-cselect-arrow');
+  if (arr) arr.style.transform = '';
+  // จัดการ custom textarea (กรณี allowCustom)
+  var customId = wrapper.dataset.customId;
+  if (customId) {
+    var customEl = document.getElementById(customId);
+    if (customEl) {
+      customEl.style.display = (val === '__custom__') ? 'block' : 'none';
+      if (val === '__custom__') { if (typeof autoExpand === 'function') autoExpand(customEl); customEl.focus(); }
+      else customEl.value = '';
+    }
+  }
+  // Trigger onTblInput เพื่ออัปเดต auto-sum
+  var fkey = wrapper.dataset.fkey;
+  if (fkey && typeof onTblInput === 'function') onTblInput(fkey);
+}
+
+// เรียกหลัง fillFormData เพื่อ sync display ของ custom select จาก hidden input
+function _refreshQaSelects(container) {
+  (container || document).querySelectorAll('.qa-cselect').forEach(function(wrapper) {
+    var hidden = wrapper.querySelector('input[type="hidden"]');
+    if (!hidden) return;
+    var val = hidden.value || '';
+    var valEl = wrapper.querySelector('.qa-cselect-val');
+    // หาข้อความแสดงผลจาก item ที่ตรงกับ val (รองรับ __custom__ → แสดง "-- กำหนดเอง --")
+    var matchItem = val ? wrapper.querySelector('.qa-cselect-item[data-value="'+val+'"]') : null;
+    var dispText = matchItem ? matchItem.textContent : (val || '');
+    if (valEl) {
+      valEl.textContent = dispText || '-- เลือก --';
+      valEl.classList.toggle('placeholder', !val);
+    }
+    wrapper.querySelectorAll('.qa-cselect-item').forEach(function(item) {
+      item.classList.toggle('selected', item.dataset.value === val);
+    });
+    // แสดง custom textarea ถ้า value = __custom__
+    var customId = wrapper.dataset.customId;
+    if (customId && val === '__custom__') {
+      var customEl = document.getElementById(customId);
+      if (customEl) customEl.style.display = 'block';
+    }
+  });
+}
+
+// ปิด dropdown เมื่อคลิกนอกพื้นที่
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.qa-cselect')) {
+    document.querySelectorAll('.qa-cselect-dropdown.open').forEach(function(dd) {
+      dd.classList.remove('open');
+      var arr = dd.closest('.qa-cselect').querySelector('.qa-cselect-arrow');
+      if (arr) arr.style.transform = '';
+    });
+  }
+}, true);
 
 </script>
