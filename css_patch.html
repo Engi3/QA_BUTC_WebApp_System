@@ -860,9 +860,15 @@ div[id$="-picker-modal"] > div {
   background: var(--surface-3, var(--surface-2)) !important;
 }
 
-/* ── Table native select: allow selected value to display with height:auto ── */
-/* native <select> ใช้ใน table cells เพราะ custom dropdown ถูก clip โดย overflow:auto */
-.tbl-sel-input { height: auto; min-height: 34px; }
+/* ── Table delete-row column: ปุ่มลบแถว แคบสุด ชิดขวา ── */
+.tbl-del-cell { width: 28px; min-width: 28px; padding: 2px 2px; text-align: center; vertical-align: middle; }
+.tbl-del-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border: none; border-radius: 4px;
+  background: transparent; color: var(--danger, #ef4444); cursor: pointer;
+  font-size: .78rem; line-height: 1; transition: background .12s, color .12s;
+}
+.tbl-del-btn:hover { background: rgba(239,68,68,.12); color: #dc2626; }
 
 /* ── Custom Select Dropdown (qa-cselect) ────────────────────── */
 .qa-cselect { position: relative; width: 100%; }
@@ -879,10 +885,12 @@ div[id$="-picker-modal"] > div {
 .qa-cselect-val.placeholder { color: var(--txt-muted); }
 .qa-cselect-arrow { flex-shrink: 0; font-size: .7rem; color: var(--txt-muted); transition: transform .15s; margin-top: 3px; }
 .qa-cselect-dropdown {
-  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 1000;
+  /* position + top/left/width/maxHeight ถูกตั้งผ่าน JS (_qaSelectOpen) แบบ position:fixed
+     เพื่อให้ dropdown ลอยเหนือ overflow:auto ของตาราง และไม่เลยขอบ viewport */
+  z-index: 9999;
   background: var(--glass-2, var(--surface)); border: 1.5px solid var(--border);
   border-radius: var(--r-sm); box-shadow: var(--shadow-lg);
-  max-height: 300px; overflow-y: auto; display: none;
+  overflow-y: auto; display: none;
 }
 .qa-cselect-dropdown.open { display: block; }
 .qa-cselect-item {

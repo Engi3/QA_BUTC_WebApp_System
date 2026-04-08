@@ -446,11 +446,12 @@ function renderTableField(field) {
     html += '<div style="overflow-x:auto;"><table class="qa-data-table qa-enhanced-table" id="tbl-'+fkey+'"><thead>'+thead+'</thead><tbody id="tbl-body-'+fkey+'">'+tbody+'</tbody>'+tfoot+'</table></div>';
 
   } else {
-    // Dynamic rows mode
+    // Dynamic rows mode — เพิ่ม th สำหรับคอลัมน์ลบแถว (ชิดขวา แคบสุด)
+    var dynThead = thead.replace('</tr>', '<th class="tbl-hd tbl-del-hd" style="width:28px;min-width:28px;padding:2px;"></th></tr>');
     var firstRow = _buildDynRow(fkey, 0, td, showRowTotal, showColTotal);
     html += '<button type="button" class="qa-btn-add-field mb-2" onclick="addEnhancedDynRow(\''+escHtml(fkey)+'\')"><i class="bi bi-plus-circle-fill me-1"></i>เพิ่มแถว</button>';
     html += '<div style="overflow-x:auto;"><table class="qa-data-table qa-enhanced-table" id="tbl-'+fkey+'">';
-    html += '<thead>'+thead+'</thead>';
+    html += '<thead>'+dynThead+'</thead>';
     html += '<tbody id="tbl-body-'+fkey+'">'+firstRow+'</tbody>';
     // Col total row (dynamic)
     if (showColTotal) {
@@ -492,19 +493,28 @@ function _buildCellInput(ckey, col, fkey, ri, ci, showRowTotal, showColTotal, td
     return '<input type="date" class="qa-input" name="'+escHtml(ckey)+'" style="'+st+'">';
   }
   if (col.type==="select") {
-    // ใช้ native <select> ในตาราง เพราะ custom dropdown ถูก clip โดย overflow:auto ของตาราง
-    // native <select> เปิด popup ข้ามขอบตารางได้ตามธรรมชาติของ browser
+    // ใช้ custom dropdown (.qa-cselect) เพื่อให้ option text ขึ้นบรรทัดใหม่ได้
+    // dropdown ใช้ position:fixed ผ่าน _qaSelectOpen จึงไม่ถูก clip โดย overflow:auto ของตาราง
     var customId = 'custom-' + ckey;
     var items = col.items || [];
-    var opts = '<option value="">-- เลือก --</option>'
-      + items.map(function(o){
-          var v = o.trim();
-          return '<option value="'+escHtml(v)+'" title="'+escHtml(v)+'">'+escHtml(v)+'</option>';
-        }).join("");
+    var itemsHtml = items.map(function(o){
+      var v = o.trim();
+      return '<div class="qa-cselect-item" data-value="'+escHtml(v)+'" onclick="_qaSelectPick(this)">'+escHtml(v)+'</div>';
+    }).join("");
     if (col.allowCustom) {
-      opts += '<option value="__custom__">-- กำหนดเอง --</option>';
+      itemsHtml += '<div class="qa-cselect-item" data-value="__custom__" onclick="_qaSelectPick(this)">-- กำหนดเอง --</div>';
     }
-    return '<select class="qa-input tbl-sel-input" name="'+escHtml(ckey)+'" onchange="_onSelectCustomChange(this,\''+customId+'\');onTblInput(\''+escHtml(fkey)+'\')" style="'+st+'">'+opts+'</select>'
+    return '<div class="qa-cselect" data-fkey="'+escHtml(fkey)+'" data-custom-id="'+customId+'">'
+      +'<input type="hidden" name="'+escHtml(ckey)+'" value="">'
+      +'<button type="button" class="qa-cselect-btn" onclick="_qaSelectOpen(this)">'
+      +'<span class="qa-cselect-val placeholder">-- เลือก --</span>'
+      +'<i class="bi bi-chevron-down qa-cselect-arrow"></i>'
+      +'</button>'
+      +'<div class="qa-cselect-dropdown">'
+      +'<div class="qa-cselect-item placeholder-item" data-value="" onclick="_qaSelectPick(this)">-- เลือก --</div>'
+      +itemsHtml
+      +'</div>'
+      +'</div>'
       +(col.allowCustom ? '<textarea id="'+customId+'" name="'+escHtml(ckey)+'_custom" class="qa-input mt-1 auto-expand" placeholder="โปรดระบุ..." style="display:none; font-size:.78rem; padding:4px; min-height:34px; resize:vertical; width:100%;" oninput="autoExpand(this)"></textarea>' : '');
   }
   if (col.type==="radio") {
@@ -577,7 +587,7 @@ function _buildDynRow(fkey, ri, td, showRowTotal, showColTotal) {
     }
   });
   if (showRowTotal) row += '<td class="tbl-cell-auto tbl-row-sum" id="tbl-rowsum-'+fkey+'-'+ri+'">—</td>';
-  row += '<td class="tbl-cell" style="width:36px;"><button type="button" class="qa-btn-danger btn-xs" onclick="this.closest(\'tr\').remove();onTblInput(\''+escHtml(fkey)+'\')"><i class="bi bi-trash"></i></button></td>';
+  row += '<td class="tbl-cell tbl-del-cell"><button type="button" class="tbl-del-btn" title="ลบแถว" onclick="this.closest(\'tr\').remove();onTblInput(\''+escHtml(fkey)+'\')"><i class="bi bi-trash3"></i></button></td>';
   row += '</tr>';
   return row;
 }

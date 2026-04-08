@@ -311,9 +311,53 @@ function _qaSelectOpen(btn) {
       if (arr) arr.style.transform = '';
     }
   });
+  if (!isOpen) {
+    // ใช้ position:fixed + getBoundingClientRect เพื่อให้ dropdown ลอยเหนือ overflow:auto
+    // ของตาราง/container และไม่เลยขอบจอ
+    var rect = btn.getBoundingClientRect();
+    var vpW = window.innerWidth;
+    var vpH = window.innerHeight;
+    var minW = Math.max(rect.width, 260); // กว้างพอให้อ่านข้อความยาวได้
+    // จัด left: เริ่มจากขอบซ้ายของปุ่ม แต่ clamp ไม่ให้เลยขอบขวา viewport
+    var left = rect.left;
+    if (left + minW > vpW - 8) left = Math.max(8, vpW - minW - 8);
+    dd.style.position = 'fixed';
+    dd.style.left = left + 'px';
+    dd.style.width = minW + 'px';
+    dd.style.right = 'auto';
+    // เปิดลงถ้ามีที่ว่าง มิฉะนั้นเปิดขึ้น
+    var spaceBelow = vpH - rect.bottom - 8;
+    var spaceAbove = rect.top - 8;
+    if (spaceBelow >= 150 || spaceBelow >= spaceAbove) {
+      dd.style.top = (rect.bottom + 2) + 'px';
+      dd.style.bottom = 'auto';
+      dd.style.maxHeight = Math.max(150, Math.min(300, spaceBelow)) + 'px';
+    } else {
+      dd.style.top = 'auto';
+      dd.style.bottom = (vpH - rect.top + 2) + 'px';
+      dd.style.maxHeight = Math.max(150, Math.min(300, spaceAbove)) + 'px';
+    }
+  }
   dd.classList.toggle('open', !isOpen);
   btn.querySelector('.qa-cselect-arrow').style.transform = isOpen ? '' : 'rotate(180deg)';
 }
+
+// ปิด + reset position ของ dropdown ที่เปิดอยู่
+function _qaSelectCloseAll(except) {
+  document.querySelectorAll('.qa-cselect-dropdown.open').forEach(function(d) {
+    if (d === except) return;
+    d.classList.remove('open');
+    d.style.position = '';
+    d.style.top = ''; d.style.bottom = '';
+    d.style.left = ''; d.style.right = '';
+    d.style.width = ''; d.style.maxHeight = '';
+    var arr = d.closest('.qa-cselect').querySelector('.qa-cselect-arrow');
+    if (arr) arr.style.transform = '';
+  });
+}
+
+// ปิด dropdown เมื่อ scroll (position:fixed ต้อง reposition — ง่ายกว่าแค่ปิด)
+window.addEventListener('scroll', function() { _qaSelectCloseAll(null); }, true);
 
 function _qaSelectPick(item) {
   var wrapper = item.closest('.qa-cselect');
@@ -379,13 +423,7 @@ function _refreshQaSelects(container) {
 
 // ปิด dropdown เมื่อคลิกนอกพื้นที่
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('.qa-cselect')) {
-    document.querySelectorAll('.qa-cselect-dropdown.open').forEach(function(dd) {
-      dd.classList.remove('open');
-      var arr = dd.closest('.qa-cselect').querySelector('.qa-cselect-arrow');
-      if (arr) arr.style.transform = '';
-    });
-  }
+  if (!e.target.closest('.qa-cselect')) { _qaSelectCloseAll(null); }
 }, true);
 
 </script>
