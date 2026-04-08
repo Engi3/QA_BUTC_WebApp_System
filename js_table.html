@@ -492,26 +492,19 @@ function _buildCellInput(ckey, col, fkey, ri, ci, showRowTotal, showColTotal, td
     return '<input type="date" class="qa-input" name="'+escHtml(ckey)+'" style="'+st+'">';
   }
   if (col.type==="select") {
+    // ใช้ native <select> ในตาราง เพราะ custom dropdown ถูก clip โดย overflow:auto ของตาราง
+    // native <select> เปิด popup ข้ามขอบตารางได้ตามธรรมชาติของ browser
     var customId = 'custom-' + ckey;
     var items = col.items || [];
-    var itemsHtml = items.map(function(o){
-      var v = o.trim();
-      return '<div class="qa-cselect-item" data-value="'+escHtml(v)+'" onclick="_qaSelectPick(this)">'+escHtml(v)+'</div>';
-    }).join("");
+    var opts = '<option value="">-- เลือก --</option>'
+      + items.map(function(o){
+          var v = o.trim();
+          return '<option value="'+escHtml(v)+'" title="'+escHtml(v)+'">'+escHtml(v)+'</option>';
+        }).join("");
     if (col.allowCustom) {
-      itemsHtml += '<div class="qa-cselect-item" data-value="__custom__" onclick="_qaSelectPick(this)">-- กำหนดเอง --</div>';
+      opts += '<option value="__custom__">-- กำหนดเอง --</option>';
     }
-    return '<div class="qa-cselect" data-fkey="'+escHtml(fkey)+'" data-custom-id="'+customId+'">'
-      +'<input type="hidden" name="'+escHtml(ckey)+'" value="">'
-      +'<button type="button" class="qa-cselect-btn" onclick="_qaSelectOpen(this)">'
-      +'<span class="qa-cselect-val placeholder">-- เลือก --</span>'
-      +'<i class="bi bi-chevron-down qa-cselect-arrow"></i>'
-      +'</button>'
-      +'<div class="qa-cselect-dropdown">'
-      +'<div class="qa-cselect-item placeholder-item" data-value="" onclick="_qaSelectPick(this)">-- เลือก --</div>'
-      +itemsHtml
-      +'</div>'
-      +'</div>'
+    return '<select class="qa-input tbl-sel-input" name="'+escHtml(ckey)+'" onchange="_onSelectCustomChange(this,\''+customId+'\');onTblInput(\''+escHtml(fkey)+'\')" style="'+st+'">'+opts+'</select>'
       +(col.allowCustom ? '<textarea id="'+customId+'" name="'+escHtml(ckey)+'_custom" class="qa-input mt-1 auto-expand" placeholder="โปรดระบุ..." style="display:none; font-size:.78rem; padding:4px; min-height:34px; resize:vertical; width:100%;" oninput="autoExpand(this)"></textarea>' : '');
   }
   if (col.type==="radio") {

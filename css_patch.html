@@ -860,6 +860,10 @@ div[id$="-picker-modal"] > div {
   background: var(--surface-3, var(--surface-2)) !important;
 }
 
+/* ── Table native select: allow selected value to display with height:auto ── */
+/* native <select> ใช้ใน table cells เพราะ custom dropdown ถูก clip โดย overflow:auto */
+.tbl-sel-input { height: auto; min-height: 34px; }
+
 /* ── Custom Select Dropdown (qa-cselect) ────────────────────── */
 .qa-cselect { position: relative; width: 100%; }
 .qa-cselect-btn {
