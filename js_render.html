@@ -378,8 +378,14 @@ function _renderFormProgressGrid(containerId, year) {
         var isFilled = fSecs.some(function(sid) {
           var dObj = _secDataMap[sid] || gDataObj;
           if (field.type === "table") {
-            var prefix = field.key + "_r";
-            return Object.keys(dObj).some(function(k){ return k.indexOf(prefix)===0 && k.indexOf("_total_rows")<0 && k.indexOf("_col_meta")<0 && k.indexOf("_table_def")<0 && dObj[k]!==""&&dObj[k]!==null&&dObj[k]!==undefined; });
+            var prefixR2   = field.key + "_r";
+            var prefixCol2 = field.key + "_col";
+            return Object.keys(dObj).some(function(k) {
+              var v = dObj[k];
+              if (v === "" || v === null || v === undefined) return false;
+              var isEnh = k.indexOf(prefixR2) === 0 && k.indexOf("_total_rows") < 0 && k.indexOf("_col_meta") < 0 && k.indexOf("_table_def") < 0;
+              return isEnh || k.indexOf(prefixCol2) === 0;
+            });
           } else if (field.type === "choice-grid") {
             return (field.gridRows||[]).some(function(r,ri){ var val=dObj[field.key+"_r"+ri]; return val!==undefined&&val!==null&&val!==""; });
           } else {
@@ -847,12 +853,16 @@ function _calcFieldProgress(secId, allForms, dataObj) {
       if (field.sectionIds && field.sectionIds.length && field.sectionIds.indexOf(secId) < 0) return;
       total++;
       if (field.type === "table") {
-        // ตาราง: ข้อมูลเก็บในรูป key_rN_cN ไม่ใช่ key โดยตรง
-        var prefix = field.key + "_r";
+        // Enhanced table: key_r{ri}_c{ci} | Simple table: key_col{ci}_{ri}
+        var prefixR   = field.key + "_r";
+        var prefixCol = field.key + "_col";
         var hasData = Object.keys(dataObj).some(function(k) {
-          return k.indexOf(prefix) === 0
-            && k.indexOf("_total_rows") < 0 && k.indexOf("_col_meta") < 0 && k.indexOf("_table_def") < 0
-            && dataObj[k] !== "" && dataObj[k] !== null && dataObj[k] !== undefined;
+          var val = dataObj[k];
+          if (val === "" || val === null || val === undefined) return false;
+          var isEnhanced = k.indexOf(prefixR) === 0
+            && k.indexOf("_total_rows") < 0 && k.indexOf("_col_meta") < 0 && k.indexOf("_table_def") < 0;
+          var isSimple = k.indexOf(prefixCol) === 0;
+          return isEnhanced || isSimple;
         });
         if (hasData) completed++;
       } else if (field.type === "choice-grid") {

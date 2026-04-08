@@ -612,6 +612,56 @@ function addDynRow(fieldKey, colCount) {
   if (rowsEl) rowsEl.value = rc + 1;
 }
 
+// ── Pre-expand dynamic table rows so fillFormData can find all cells ──
+// Must be called BEFORE fillFormData when re-loading saved data into a form.
+// Simple table naming:   {fieldKey}_col{ci}_{ri}  (id: dyn-rows-{fieldKey})
+// Enhanced table naming: {fieldKey}_r{ri}_c{ci}   (id: tbl-rows-{fieldKey})
+function _preExpandTableRows(container, dataObj) {
+  if (!container || !dataObj) return;
+
+  // 1. Simple dynamic tables
+  container.querySelectorAll('input[id^="dyn-rows-"]').forEach(function(rowsEl) {
+    var fieldKey = rowsEl.id.replace('dyn-rows-', '');
+    var escaped = fieldKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var colRiPat = new RegExp('^' + escaped + '_col\\d+_(\\d+)$');
+    var maxRi = 0;
+    Object.keys(dataObj).forEach(function(k) {
+      var m = colRiPat.exec(k);
+      if (m) maxRi = Math.max(maxRi, parseInt(m[1], 10));
+    });
+    var curRows = parseInt(rowsEl.value, 10) || 1;
+    if (maxRi < curRows) return; // no extra rows needed
+    var colCount = container.querySelectorAll('[name^="' + fieldKey + '_col"][name$="_0"]').length || 1;
+    for (var ri = curRows; ri <= maxRi; ri++) {
+      addDynRow(fieldKey, colCount);
+    }
+  });
+
+  // 2. Enhanced dynamic tables (skip fixed-rows tables)
+  container.querySelectorAll('input[id^="tbl-rows-"]').forEach(function(rowsEl) {
+    var fieldKey = rowsEl.id.replace('tbl-rows-', '');
+    var metaEl = container.querySelector('[name="' + fieldKey + '_table_def"]');
+    if (metaEl) {
+      try {
+        var td = JSON.parse(metaEl.value);
+        if (td && td.rows && td.rows.length > 0) return; // fixed rows
+      } catch(e) {}
+    }
+    var escaped2 = fieldKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var rPat = new RegExp('^' + escaped2 + '_r(\\d+)_c\\d+$');
+    var maxRi2 = 0;
+    Object.keys(dataObj).forEach(function(k) {
+      var m = rPat.exec(k);
+      if (m) maxRi2 = Math.max(maxRi2, parseInt(m[1], 10));
+    });
+    var curRows2 = parseInt(rowsEl.value, 10) || 1;
+    if (maxRi2 < curRows2) return;
+    for (var ri2 = curRows2; ri2 <= maxRi2; ri2++) {
+      if (typeof addEnhancedDynRow === 'function') addEnhancedDynRow(fieldKey);
+    }
+  });
+}
+
 function fillFormData(container, dataObj) {
   if (!dataObj) return;
   Object.keys(dataObj).forEach(function(key) {
@@ -656,6 +706,7 @@ function _fillAllFormsWithCurrentData(dashMap) {
     if (!dashRow || !dashRow.dataJson) return;
     var dataObj = {};
     try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) { return; }
+    _preExpandTableRows(formEl, dataObj); // create missing dynamic rows before filling
     fillFormData(formEl, dataObj);
     // Re-trigger auto-sum for all table fields (fillFormData ใช้ el.value= ไม่ fire oninput)
     formEl.querySelectorAll('[name$="_table_def"]').forEach(function(metaEl) {
@@ -906,6 +957,7 @@ function copySectionData(sectionId, formId) {
         var paneId = formId ? "form-pane-" + formId : "sec-pane-" + sectionId;
         var pane = document.getElementById(paneId);
         if (pane) {
+          _preExpandTableRows(pane, res.data); // create missing dynamic rows before filling
           fillFormData(pane, res.data);
           showToast("ดึงข้อมูลปี " + targetYear + " ลงฟอร์มสำเร็จ! (แก้ไขและกดบันทึกได้เลย)", "success");
         }
