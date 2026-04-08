@@ -405,7 +405,10 @@ function _renderFormProgressGrid(containerId, year, filterSecIds) {
               var v = dObj[k];
               if (v === "" || v === null || v === undefined) return false;
               var isEnh = k.indexOf(prefixR2) === 0 && k.indexOf("_total_rows") < 0 && k.indexOf("_col_meta") < 0 && k.indexOf("_table_def") < 0;
-              return isEnh || k.indexOf(prefixCol2) === 0;
+              // Simple table prefix ต้องกรอง _col_meta และ _table_def ออกด้วย
+              // (fkey_col_meta เป็น metadata ไม่ใช่ข้อมูลที่ user กรอก)
+              var isSimple = k.indexOf(prefixCol2) === 0 && k.indexOf("_col_meta") < 0 && k.indexOf("_table_def") < 0;
+              return isEnh || isSimple;
             });
           } else if (field.type === "choice-grid") {
             return (field.gridRows||[]).some(function(r,ri){ var val=dObj[field.key+"_r"+ri]; return val!==undefined&&val!==null&&val!==""; });
@@ -901,7 +904,10 @@ function _calcFieldProgress(secId, allForms, dataObj) {
           if (val === "" || val === null || val === undefined) return false;
           var isEnhanced = k.indexOf(prefixR) === 0
             && k.indexOf("_total_rows") < 0 && k.indexOf("_col_meta") < 0 && k.indexOf("_table_def") < 0;
-          var isSimple = k.indexOf(prefixCol) === 0;
+          // Simple table: ต้องกรอง _col_meta และ _table_def ออก
+          // (fkey_col_meta เริ่มด้วย prefixCol แต่เป็น metadata ไม่ใช่ข้อมูลที่ user กรอก)
+          var isSimple = k.indexOf(prefixCol) === 0
+            && k.indexOf("_col_meta") < 0 && k.indexOf("_table_def") < 0;
           return isEnhanced || isSimple;
         });
         if (hasData) completed++;
