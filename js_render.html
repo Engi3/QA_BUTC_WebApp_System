@@ -345,7 +345,7 @@ function _renderFormProgressGrid(containerId, year, filterSecIds) {
     // fieldCount ไม่นับ divider, image, toggle-group, checkbox-group, tick-grid (สอดคล้องกับ _calcFieldProgress)
     var fieldCount = (form.fields || []).filter(function(f){
       return f.type !== "divider" && f.type !== "image"
-        && f.type !== "toggle-group" && f.type !== "checkbox-group" && f.type !== "tick-grid";
+        && f.type !== "toggle-group" && f.type !== "tick-grid";
     }).length;
     var isShared = (typeof _isSharedForm === 'function') && _isSharedForm(form);
     // อ่าน GLOBAL_ data ไว้ก่อนเสมอ (ใช้ได้ทั้ง shared และ non-shared)
@@ -385,7 +385,7 @@ function _renderFormProgressGrid(containerId, year, filterSecIds) {
 
       (form.fields || []).forEach(function(field) {
         if (field.type === "divider" || field.type === "image") return;
-        if (field.type === "toggle-group" || field.type === "checkbox-group" || field.type === "tick-grid") return;
+        if (field.type === "toggle-group" || field.type === "tick-grid") return; // ไม่เลือกก็ถือว่าตอบแล้ว
         // ระบุว่า field นี้เป็นของ section ใด (ถ้าไม่ระบุ = ทุก section)
         var fSecs = (field.sectionIds && field.sectionIds.length)
           ? field.sectionIds.filter(function(id){ return activeSecIds.indexOf(id) >= 0; })
@@ -409,6 +409,13 @@ function _renderFormProgressGrid(containerId, year, filterSecIds) {
             });
           } else if (field.type === "choice-grid") {
             return (field.gridRows||[]).some(function(r,ri){ var val=dObj[field.key+"_r"+ri]; return val!==undefined&&val!==null&&val!==""; });
+          } else if (field.type === "checkbox-group") {
+            // checkbox-group: กรอกแล้วเมื่อมีอย่างน้อย 1 รายการถูกเลือก
+            return Object.keys(dObj).some(function(k) {
+              if (k.indexOf(field.key + "_item") !== 0) return false;
+              var v = dObj[k];
+              return v !== "" && v !== null && v !== undefined && v !== false && v !== "false";
+            });
           } else {
             var v = dObj[field.key]; return v!==undefined && v!==null && v!=="";
           }
@@ -869,10 +876,19 @@ function _calcFieldProgress(secId, allForms, dataObj) {
     // ── Field-level count ──────────────────────────────────────────
     (form.fields || []).forEach(function(field) {
       if (field.type === "divider" || field.type === "image") return; // ไม่นับ divider และ image
-      // toggle-group, checkbox-group, tick-grid เป็น multi-select ที่ไม่เลือกก็ถือว่าตอบแล้ว → ไม่นับในความคืบหน้า
-      if (field.type === "toggle-group" || field.type === "checkbox-group" || field.type === "tick-grid") return;
+      if (field.type === "toggle-group" || field.type === "tick-grid") return; // ไม่เลือกก็ถือว่าตอบแล้ว → ไม่นับ
       if (field.sectionIds && field.sectionIds.length && field.sectionIds.indexOf(secId) < 0) return;
       total++;
+      // checkbox-group: กรอกแล้วเมื่อมีอย่างน้อย 1 รายการถูกเลือก
+      if (field.type === "checkbox-group") {
+        var cbFilled = Object.keys(dataObj).some(function(k) {
+          if (k.indexOf(field.key + "_item") !== 0) return false;
+          var v = dataObj[k];
+          return v !== "" && v !== null && v !== undefined && v !== false && v !== "false";
+        });
+        if (cbFilled) completed++;
+        return;
+      }
       if (field.type === "table") {
         // Enhanced table: key_r{ri}_c{ci} | Simple table: key_col{ci}_{ri}
         var prefixR   = field.key + "_r";
