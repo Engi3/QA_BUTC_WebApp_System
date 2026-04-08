@@ -354,7 +354,7 @@ function _previewCellInput(col) {
   if (col.type==="date")   return '<input type="date" disabled style="'+st+'">';
   if (col.type==="select") {
     var items = col.items || ["ตัวเลือก A","ตัวเลือก B"];
-    var optH = items.map(function(o){return '<option>'+escHtml(o)+'</option>';}).join("");
+    var optH = items.map(function(o){ var v=o.trim(); var d=v.length>60?v.substring(0,60)+'\u2026':v; return '<option value="'+escHtml(v)+'" title="'+escHtml(v)+'">'+escHtml(d)+'</option>'; }).join("");
     if(col.allowCustom) optH += '<option>-- กำหนดเอง --</option>';
     return '<select disabled style="'+st+'"><option>-- เลือก --</option>'+optH+'</select>';
   }
@@ -495,7 +495,13 @@ function _buildCellInput(ckey, col, fkey, ri, ci, showRowTotal, showColTotal, td
     var customId = 'custom-' + ckey;
     var items = col.items || [];
     var opts = '<option value="">-- เลือก --</option>'
-      + items.map(function(o){return '<option value="'+escHtml(o.trim())+'">'+escHtml(o.trim())+'</option>';}).join("");
+      + items.map(function(o){
+          var v = o.trim();
+          // ตัดข้อความที่ยาวเกิน 60 ตัวอักษรในดรอปดาวน์ เพื่อป้องกันเลยขอบหน้าจอ
+          // ค่าที่บันทึก (value) ยังคงเป็นข้อความเต็ม, title แสดงข้อความเต็มเมื่อ hover
+          var display = v.length > 60 ? v.substring(0, 60) + '\u2026' : v;
+          return '<option value="'+escHtml(v)+'" title="'+escHtml(v)+'">'+escHtml(display)+'</option>';
+        }).join("");
     
     if (col.allowCustom) {
       opts += '<option value="__custom__">-- กำหนดเอง --</option>';
