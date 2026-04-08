@@ -246,9 +246,24 @@ function loadUserSections() {
     var dashRow = dashMap[effectiveSecId] || null;
     var dataObj = {};
     if (dashRow && dashRow.dataJson) { try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) {} }
-    var _sp = (typeof _calcFieldProgress === 'function')
-      ? _calcFieldProgress(effectiveSecId, [form], dataObj)
-      : { total: 0, completed: 0 };
+    var _sp;
+    if (typeof _calcFieldProgress === 'function') {
+      if (isShared) {
+        _sp = _calcFieldProgress(effectiveSecId, [form], dataObj);
+      } else {
+        // รวมข้อมูลจากทุก section ของ user เพื่อคำนวณ progress รวม
+        var _sidebarMerged = {};
+        var _gRow2 = dashMap["GLOBAL_" + form.formId];
+        if (_gRow2 && _gRow2.dataJson) { try { var _gd2 = JSON.parse(_gRow2.dataJson); Object.keys(_gd2).forEach(function(k){ _sidebarMerged[k] = _gd2[k]; }); } catch(e) {} }
+        userSecIds.forEach(function(sid) {
+          var _r = dashMap[sid];
+          if (_r && _r.dataJson) { try { var _d = JSON.parse(_r.dataJson); Object.keys(_d).forEach(function(k){ if (_d[k] !== "" && _d[k] !== null && _d[k] !== undefined) _sidebarMerged[k] = _d[k]; }); } catch(e) {} }
+        });
+        _sp = _calcFieldProgress(userSecIds, [form], _sidebarMerged);
+      }
+    } else {
+      _sp = { total: 0, completed: 0 };
+    }
     var totalFields = _sp.total;
     var completedFields = _sp.completed;
     var pct = totalFields > 0 ? Math.round(completedFields / totalFields * 100) : 0;

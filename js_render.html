@@ -860,7 +860,9 @@ function getFormsForSection(sec) {
 }
 
 // ── คำนวณความคืบหน้าระดับฟิลด์ (ไม่นับ divider, image) ──
+// secId: string (single section) หรือ array ของ sectionId (multi-section user)
 function _calcFieldProgress(secId, allForms, dataObj) {
+  var secIds = Array.isArray(secId) ? secId : [secId]; // รองรับทั้ง string และ array
   var total = 0, completed = 0;
   (allForms || []).forEach(function(form) {
     if (!form.isActive) return;
@@ -871,13 +873,14 @@ function _calcFieldProgress(secId, allForms, dataObj) {
         var sid = String(form.sectionId);
         formSecIds = (sid.charAt(0) === "[") ? JSON.parse(sid) : [sid];
       } catch(e) { formSecIds = [String(form.sectionId)]; }
-      if (formSecIds.length > 0 && formSecIds.indexOf(secId) < 0) return; // Form ไม่ใช่ของ Section นี้
+      if (formSecIds.length > 0 && !secIds.some(function(s){ return formSecIds.indexOf(s) >= 0; })) return;
     }
     // ── Field-level count ──────────────────────────────────────────
     (form.fields || []).forEach(function(field) {
       if (field.type === "divider" || field.type === "image") return; // ไม่นับ divider และ image
       if (field.type === "toggle-group" || field.type === "tick-grid") return; // ไม่เลือกก็ถือว่าตอบแล้ว → ไม่นับ
-      if (field.sectionIds && field.sectionIds.length && field.sectionIds.indexOf(secId) < 0) return;
+      if (field.sectionIds && field.sectionIds.length
+          && !secIds.some(function(s){ return field.sectionIds.indexOf(s) >= 0; })) return;
       total++;
       // checkbox-group: กรอกแล้วเมื่อมีอย่างน้อย 1 รายการถูกเลือก
       if (field.type === "checkbox-group") {
