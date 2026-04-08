@@ -455,6 +455,7 @@ document.addEventListener("DOMContentLoaded", function() {
         APP.reportForms      = res.reportForms      || []; // ✅ เก็บ reportForms ไว้ใน Global State
         APP.reportFormGroups = res.reportFormGroups || []; // ✅ เก็บ Config กลุ่มใน Global State
         APP.reportFormOrder  = res.reportFormOrder  || {}; // ✅ เก็บ Config ลำดับใน Global State
+        APP.docTracking      = res.docTracking      || { groups: [] };
         // โหลด Dynamic IQA Schema (Task 1) — คำนวณ _iqaPages และ iqaMapping จาก schema
         if (res.iqaSchema) {
           APP.iqaSchema = res.iqaSchema;
