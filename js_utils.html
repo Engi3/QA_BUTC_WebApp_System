@@ -330,23 +330,40 @@ function _qaSelectOpen(btn) {
   var vpW = window.innerWidth;
   var vpH = window.innerHeight;
 
-  // ความกว้าง: อย่างน้อยเท่าปุ่ม (min 220px) แต่ไม่เกิน viewport
+  // ── ความกว้าง: max(ความกว้างปุ่ม, 220) แต่ไม่เกิน viewport ──
   var w = Math.min(Math.max(rect.width, 220), vpW - 16);
 
-  // จัด left: ชิดซ้ายปุ่มก่อน
-  // ถ้าขอบขวา dropdown เลย viewport → ชิดขวาปุ่มแทน (right-align)
+  // ── แนว X: ชิดซ้ายปุ่มก่อน, clamp ให้อยู่ในจอ ──
+  // 1. เริ่มที่ขอบซ้ายปุ่ม
   var left = rect.left;
+  // 2. ถ้าขอบขวา dropdown เลย viewport → ชิดขวาปุ่มแทน
   if (left + w > vpW - 8) left = rect.right - w;
-  if (left < 8) left = 8; // clamp ไม่ให้ติดขอบซ้าย
+  // 3. Hard clamp: ไม่ให้ต่ำกว่า 8 หรือเกิน vpW - w - 8
+  if (left < 8) left = 8;
+  if (left + w > vpW - 8) left = vpW - w - 8; // final clamp เผื่อ rect.right > vpW
+
+  // ── แนว Y: แสดงด้านล่างปุ่มก่อน, flip ขึ้นด้านบนถ้าไม่มีที่ว่างพอ ──
+  var spaceBelow = vpH - rect.bottom - 8;
+  var spaceAbove = rect.top - 8;
+  var maxH, top;
+  if (spaceBelow >= 120 || spaceBelow >= spaceAbove) {
+    // แสดงใต้ปุ่ม
+    top  = rect.bottom + 2;
+    maxH = Math.max(80, Math.min(300, spaceBelow));
+  } else {
+    // พื้นที่ด้านล่างไม่พอ → flip ขึ้นด้านบน
+    maxH = Math.max(80, Math.min(300, spaceAbove));
+    top  = rect.top - maxH - 2;
+    if (top < 8) top = 8;
+  }
 
   dd.style.position  = 'fixed';
   dd.style.left      = left + 'px';
-  dd.style.top       = (rect.bottom + 2) + 'px'; // ใต้ปุ่มเสมอ
+  dd.style.top       = top + 'px';
   dd.style.width     = w + 'px';
   dd.style.right     = 'auto';
   dd.style.bottom    = 'auto';
-  // maxHeight ปรับตามพื้นที่ว่างด้านล่าง (min 120, max 300)
-  dd.style.maxHeight = Math.max(120, Math.min(300, vpH - rect.bottom - 8)) + 'px';
+  dd.style.maxHeight = maxH + 'px';
 
   dd.classList.add('open');
   btn.querySelector('.qa-cselect-arrow').style.transform = 'rotate(180deg)';
