@@ -298,85 +298,113 @@ function buildDeptChips(containerId, selectedDeptIds) {
 
 // ── Custom Select Dropdown (qa-cselect) ─────────────────────────
 // แทน native <select> เพื่อให้ option text ขึ้นบรรทัดใหม่ได้เมื่อยาว
+//
+// PATTERN: ย้าย dropdown element ไป document.body ตอนเปิด แล้วคืนกลับตอนปิด
+// ทำให้ dropdown ไม่ถูก clip โดย overflow:auto / transform ของ parent ตาราง
+// ──────────────────────────────────────────────────────────────────
 
 function _qaSelectOpen(btn) {
   var wrapper = btn.closest('.qa-cselect');
-  var dd = wrapper.querySelector('.qa-cselect-dropdown');
+  // ใช้ _qsDD ที่ cache ไว้ หรือหาใหม่ (dropdown อาจถูก move ไป body แล้ว)
+  var dd = wrapper._qsDD || wrapper.querySelector('.qa-cselect-dropdown');
+  if (!dd) return;
+  wrapper._qsDD = dd;
+
   var isOpen = dd.classList.contains('open');
-  // ปิด dropdown อื่นๆ ทั้งหมดก่อน
-  document.querySelectorAll('.qa-cselect-dropdown.open').forEach(function(d) {
-    if (d !== dd) {
-      d.classList.remove('open');
-      var arr = d.closest('.qa-cselect').querySelector('.qa-cselect-arrow');
-      if (arr) arr.style.transform = '';
-    }
-  });
-  if (!isOpen) {
-    // ใช้ position:fixed + getBoundingClientRect เพื่อให้ dropdown ลอยเหนือ overflow:auto
-    var rect = btn.getBoundingClientRect();
-    var vpW = window.innerWidth;
-    var vpH = window.innerHeight;
-    // กว้าง = max(ความกว้างปุ่ม, 240) แต่ไม่เกิน viewport - 16px
-    var minW = Math.min(Math.max(rect.width, 240), vpW - 16);
-    // จัด left: เริ่มจากขอบซ้ายของปุ่ม clamp ไม่ให้เลยขอบขวา
-    var left = rect.left;
-    if (left + minW > vpW - 8) left = Math.max(8, vpW - minW - 8);
-    dd.style.position = 'fixed';
-    dd.style.left = left + 'px';
-    dd.style.width = minW + 'px';
-    dd.style.right = 'auto';
-    // แสดงใต้ปุ่มเสมอ — ปรับ maxHeight ตามพื้นที่ว่างด้านล่าง
-    dd.style.top = (rect.bottom + 2) + 'px';
-    dd.style.bottom = 'auto';
-    dd.style.maxHeight = Math.max(120, Math.min(300, vpH - rect.bottom - 8)) + 'px';
-  }
-  dd.classList.toggle('open', !isOpen);
-  // reset inline styles เมื่อปิด
+
+  // ปิด dropdown อื่นทั้งหมดก่อน
+  _qaSelectCloseAll(null);
+
   if (isOpen) {
-    dd.style.position = ''; dd.style.top = ''; dd.style.bottom = '';
-    dd.style.left = ''; dd.style.right = ''; dd.style.width = ''; dd.style.maxHeight = '';
+    // คลิกที่ปุ่มเดิมอีกครั้ง = ปิด (ถูกปิดแล้วโดย _qaSelectCloseAll)
+    btn.querySelector('.qa-cselect-arrow').style.transform = '';
+    return;
   }
-  btn.querySelector('.qa-cselect-arrow').style.transform = isOpen ? '' : 'rotate(180deg)';
+
+  // ── ย้าย dropdown ไป body เพื่อหลีกเลี่ยง overflow:auto / CSS transform ของ parent ──
+  dd._qaOwner = wrapper;
+  if (dd.parentNode !== document.body) document.body.appendChild(dd);
+
+  // คำนวณตำแหน่ง
+  var rect = btn.getBoundingClientRect();
+  var vpW = window.innerWidth;
+  var vpH = window.innerHeight;
+
+  // ความกว้าง: อย่างน้อยเท่าปุ่ม (min 220px) แต่ไม่เกิน viewport
+  var w = Math.min(Math.max(rect.width, 220), vpW - 16);
+
+  // จัด left: ชิดซ้ายปุ่มก่อน
+  // ถ้าขอบขวา dropdown เลย viewport → ชิดขวาปุ่มแทน (right-align)
+  var left = rect.left;
+  if (left + w > vpW - 8) left = rect.right - w;
+  if (left < 8) left = 8; // clamp ไม่ให้ติดขอบซ้าย
+
+  dd.style.position  = 'fixed';
+  dd.style.left      = left + 'px';
+  dd.style.top       = (rect.bottom + 2) + 'px'; // ใต้ปุ่มเสมอ
+  dd.style.width     = w + 'px';
+  dd.style.right     = 'auto';
+  dd.style.bottom    = 'auto';
+  // maxHeight ปรับตามพื้นที่ว่างด้านล่าง (min 120, max 300)
+  dd.style.maxHeight = Math.max(120, Math.min(300, vpH - rect.bottom - 8)) + 'px';
+
+  dd.classList.add('open');
+  btn.querySelector('.qa-cselect-arrow').style.transform = 'rotate(180deg)';
 }
 
-// ปิด + reset position ของ dropdown ที่เปิดอยู่
-function _qaSelectCloseAll(except) {
-  document.querySelectorAll('.qa-cselect-dropdown.open').forEach(function(d) {
-    if (d === except) return;
-    d.classList.remove('open');
-    d.style.position = '';
-    d.style.top = ''; d.style.bottom = '';
-    d.style.left = ''; d.style.right = '';
-    d.style.width = ''; d.style.maxHeight = '';
-    var arr = d.closest('.qa-cselect').querySelector('.qa-cselect-arrow');
+// ── ปิด dropdown เดียว + คืนกลับ owner wrapper ──
+function _qaSelectCloseOne(dd) {
+  if (!dd) return;
+  dd.classList.remove('open');
+  ['position','top','bottom','left','right','width','maxHeight'].forEach(function(p) {
+    dd.style[p] = '';
+  });
+  // คืน dropdown กลับ wrapper owner
+  if (dd._qaOwner && dd.parentNode !== dd._qaOwner) dd._qaOwner.appendChild(dd);
+  // reset ลูกศรของ wrapper
+  if (dd._qaOwner) {
+    var arr = dd._qaOwner.querySelector('.qa-cselect-arrow');
     if (arr) arr.style.transform = '';
+  }
+}
+
+// ── ปิด dropdown ทั้งหมด (ยกเว้น except) ──
+function _qaSelectCloseAll(except) {
+  document.querySelectorAll('.qa-cselect-dropdown.open').forEach(function(dd) {
+    if (dd !== except) _qaSelectCloseOne(dd);
   });
 }
 
-// ปิด dropdown เมื่อ scroll (position:fixed ต้อง reposition — ง่ายกว่าแค่ปิด)
+// ปิดเมื่อ scroll — position:fixed ต้อง recalculate ปิดง่ายกว่า
 window.addEventListener('scroll', function() { _qaSelectCloseAll(null); }, true);
 
 function _qaSelectPick(item) {
-  var wrapper = item.closest('.qa-cselect');
+  // หา dropdown (อาจอยู่ใน body) และ wrapper ผ่าน _qaOwner
+  var dd = item.closest('.qa-cselect-dropdown');
+  var wrapper = (dd && dd._qaOwner) || item.closest('.qa-cselect');
+  if (!wrapper) return;
+
   var val = item.dataset.value;
-  // อัปเดต hidden input (ใช้สำหรับบันทึกข้อมูล + fillFormData)
+
+  // อัปเดต hidden input (ใช้บันทึกข้อมูล + fillFormData)
   var hidden = wrapper.querySelector('input[type="hidden"]');
   if (hidden) hidden.value = val;
-  // อัปเดต display button (แสดงข้อความของ item แทน raw value เพื่อรองรับ __custom__)
+
+  // อัปเดต display button (แสดงข้อความ item แทน raw value เพื่อรองรับ __custom__)
   var valEl = wrapper.querySelector('.qa-cselect-val');
   if (valEl) {
     valEl.textContent = item.textContent || val || '-- เลือก --';
     valEl.classList.toggle('placeholder', !val);
   }
-  // อัปเดต selected class
-  wrapper.querySelectorAll('.qa-cselect-item').forEach(function(i) {
+
+  // อัปเดต selected class บน items
+  if (dd) dd.querySelectorAll('.qa-cselect-item').forEach(function(i) {
     i.classList.toggle('selected', i === item);
   });
-  // ปิด dropdown
-  var dd = wrapper.querySelector('.qa-cselect-dropdown');
-  if (dd) dd.classList.remove('open');
-  var arr = wrapper.querySelector('.qa-cselect-arrow');
-  if (arr) arr.style.transform = '';
+
+  // ปิด dropdown + คืน owner
+  _qaSelectCloseOne(dd);
+
   // จัดการ custom textarea (กรณี allowCustom)
   var customId = wrapper.dataset.customId;
   if (customId) {
@@ -387,6 +415,7 @@ function _qaSelectPick(item) {
       else customEl.value = '';
     }
   }
+
   // Trigger onTblInput เพื่ออัปเดต auto-sum
   var fkey = wrapper.dataset.fkey;
   if (fkey && typeof onTblInput === 'function') onTblInput(fkey);
@@ -399,14 +428,15 @@ function _refreshQaSelects(container) {
     if (!hidden) return;
     var val = hidden.value || '';
     var valEl = wrapper.querySelector('.qa-cselect-val');
-    // หาข้อความแสดงผลจาก item ที่ตรงกับ val (รองรับ __custom__ → แสดง "-- กำหนดเอง --")
-    var matchItem = val ? wrapper.querySelector('.qa-cselect-item[data-value="'+val+'"]') : null;
+    // หา items จาก dd ที่ cache ไว้ หรือใน wrapper (กรณี dropdown ยังไม่ถูก move)
+    var dd = wrapper._qsDD || wrapper.querySelector('.qa-cselect-dropdown');
+    var matchItem = (val && dd) ? dd.querySelector('.qa-cselect-item[data-value="'+val+'"]') : null;
     var dispText = matchItem ? matchItem.textContent : (val || '');
     if (valEl) {
       valEl.textContent = dispText || '-- เลือก --';
       valEl.classList.toggle('placeholder', !val);
     }
-    wrapper.querySelectorAll('.qa-cselect-item').forEach(function(item) {
+    if (dd) dd.querySelectorAll('.qa-cselect-item').forEach(function(item) {
       item.classList.toggle('selected', item.dataset.value === val);
     });
     // แสดง custom textarea ถ้า value = __custom__
@@ -418,9 +448,11 @@ function _refreshQaSelects(container) {
   });
 }
 
-// ปิด dropdown เมื่อคลิกนอกพื้นที่
+// ปิด dropdown เมื่อคลิกนอก .qa-cselect และนอก .qa-cselect-dropdown (อาจอยู่ใน body)
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('.qa-cselect')) { _qaSelectCloseAll(null); }
+  if (!e.target.closest('.qa-cselect') && !e.target.closest('.qa-cselect-dropdown')) {
+    _qaSelectCloseAll(null);
+  }
 }, true);
 
 </script>
