@@ -374,6 +374,15 @@ function _renderFormProgressGrid(containerId, year, filterSecIds) {
         _secDataMap[sec.sectionId] = dObj;
       });
       var activeSecIds = activeSections.map(function(s){ return s.sectionId; });
+      // รวมข้อมูลจากทุก Section + GLOBAL_ เพื่อตรวจว่า "กรอกแล้วหรือยัง"
+      // ป้องกันกรณี Admin กรอกข้าม Section หรือข้อมูลบันทึกอยู่คนละ key
+      var _mergedDataObj = {};
+      Object.keys(gDataObj).forEach(function(k){ _mergedDataObj[k] = gDataObj[k]; });
+      activeSections.forEach(function(sec) {
+        var dObj = _secDataMap[sec.sectionId] || {};
+        Object.keys(dObj).forEach(function(k){ if (dObj[k] !== "" && dObj[k] !== null && dObj[k] !== undefined) _mergedDataObj[k] = dObj[k]; });
+      });
+
       (form.fields || []).forEach(function(field) {
         if (field.type === "divider" || field.type === "image") return;
         if (field.type === "toggle-group" || field.type === "checkbox-group" || field.type === "tick-grid") return;
@@ -387,9 +396,8 @@ function _renderFormProgressGrid(containerId, year, filterSecIds) {
         }
         if (!fSecs.length) return;
         totalPoints++;
-        // นับว่ากรอกแล้วหรือไม่ โดย section ใดก็ได้ที่มีสิทธิ์ (รวม GLOBAL_ fallback)
-        var isFilled = fSecs.some(function(sid) {
-          var dObj = _secDataMap[sid] || gDataObj;
+        // ตรวจสอบจาก _mergedDataObj (รวมทุก Section) — ใครกรอกก็นับ
+        var isFilled = (function(dObj) {
           if (field.type === "table") {
             var prefixR2   = field.key + "_r";
             var prefixCol2 = field.key + "_col";
@@ -404,7 +412,7 @@ function _renderFormProgressGrid(containerId, year, filterSecIds) {
           } else {
             var v = dObj[field.key]; return v!==undefined && v!==null && v!=="";
           }
-        });
+        })(_mergedDataObj);
         if (isFilled) completedPoints++;
       });
     }
