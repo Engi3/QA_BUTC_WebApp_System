@@ -392,8 +392,12 @@ function _qaSelectCloseAll(except) {
   });
 }
 
-// ปิดเมื่อ scroll — position:fixed ต้อง recalculate ปิดง่ายกว่า
-window.addEventListener('scroll', function() { _qaSelectCloseAll(null); }, true);
+// ปิดเมื่อ scroll — แต่ยกเว้นถ้า scroll เกิดภายใน .qa-cselect-dropdown เอง
+// (dropdown มี overflow-y:auto และ max-height → user ต้อง scroll ในนั้นได้)
+window.addEventListener('scroll', function(e) {
+  if (e.target && typeof e.target.closest === 'function' && e.target.closest('.qa-cselect-dropdown')) return;
+  _qaSelectCloseAll(null);
+}, true);
 
 function _qaSelectPick(item) {
   // หา dropdown (อาจอยู่ใน body) และ wrapper ผ่าน _qaOwner
