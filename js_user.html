@@ -219,10 +219,22 @@ function loadUserSections() {
       if (!secObj) continue;
       var formLevelMatch = form.sectionId && form.sectionId === sid;
       var sectionAssigned = (secObj.assignedFormIDs || []).indexOf(form.formId) >= 0;
-      var hasField = formLevelMatch || sectionAssigned || (form.fields || []).some(function(f) {
-        if (!f.sectionIds || !f.sectionIds.length) return true;
-        return f.sectionIds.indexOf(sid) >= 0;
+      // ตรวจว่าฟอร์มนี้มีฟิลด์ที่กำหนด Section เฉพาะไว้หรือไม่
+      var formHasFieldSections = (form.fields || []).some(function(f) {
+        return f.sectionIds && f.sectionIds.length > 0;
       });
+      var hasField;
+      if (formLevelMatch || sectionAssigned) {
+        hasField = true;
+      } else if (formHasFieldSections) {
+        // ฟอร์มมี field-level sections: แสดงเฉพาะ Section ที่มีฟิลด์ที่กำหนดไว้
+        hasField = (form.fields || []).some(function(f) {
+          return f.sectionIds && f.sectionIds.indexOf(sid) >= 0;
+        });
+      } else {
+        // ไม่มี field-level sections เลย (ทุก field เปิดให้ทุก Section): แสดงกับทุก Section
+        hasField = true;
+      }
       if (hasField) { matchingSec = secObj; break; }
     }
     if (!matchingSec) return;
@@ -265,7 +277,7 @@ function loadUserSections() {
       + '</div></div></button>';
 
     panesHtml += '<div id="form-pane-' + fid + '" style="display:' + (validIndex === 0 ? 'block' : 'none') + ';">'
-      + _buildFormPaneContent(form, matchingSec, effectiveSecId, effectiveSecName, userSecIds)
+      + _buildFormPaneContent(form, matchingSec, effectiveSecId, effectiveSecName, userSecIds, dashMap)
       + '</div>';
 
     validIndex++;
@@ -303,7 +315,7 @@ function selectUserForm(formId) {
 }
 
 // ── สร้างเนื้อหาภายใน form-pane (Copy bar + Form card) ──
-function _buildFormPaneContent(form, section, effectiveSecId, effectiveSecName, userSecIds) {
+function _buildFormPaneContent(form, section, effectiveSecId, effectiveSecName, userSecIds, dashMap) {
   var fid = escHtml(form.formId);
   var sid = escHtml(effectiveSecId || section.sectionId);
 
@@ -315,11 +327,11 @@ function _buildFormPaneContent(form, section, effectiveSecId, effectiveSecName, 
     + '<i class="bi bi-clipboard-data me-1"></i> ดึงข้อมูลลงฟอร์ม</button>'
     + '</div>';
 
-  html += buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecIds);
+  html += buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecIds, dashMap);
   return html;
 }
 
-function buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecIds) {
+function buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecIds, dashMap) {
   var secId   = escHtml(effectiveSecId   || section.sectionId);
   var secName = escHtml(effectiveSecName || section.sectionName);
   var fid     = escHtml(form.formId);
@@ -328,17 +340,72 @@ function buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecI
     ? '<button type="button" class="qa-btn-danger btn-sm" onclick="promptClearSection(this,\''+secId+'\',\''+secName+'\')"><i class="bi bi-eraser-fill me-1"></i>ล้างข้อมูล</button>'
     : "";
 
-  // ── filter fields ตาม userSecIds ทั้งหมด (ไม่ใช่แค่ section แรก) ──
-  // admin_acting_as_user และ manager เห็นทุก field
+  // admin_acting_as_user และ manager เห็นและแก้ไขทุก field
   var isAdminView = APP.activeRole === "admin_acting_as_user"
     || (APP.user && APP.user.role === "manager");
   var _userSecs = userSecIds || (section ? [section.sectionId] : []);
-  var visibleFields = (form.fields || []).filter(function(f) {
-    if (isAdminView) return true;
-    if (!f.sectionIds || !f.sectionIds.length) return true;
-    // field visible ถ้า user มีอย่างน้อย 1 section ที่ตรงกับ field.sectionIds
-    return f.sectionIds.some(function(sid) { return _userSecs.indexOf(sid) >= 0; });
+
+  // แยก fields เป็น: editable (มีสิทธิ์กรอก) vs locked (อ่านได้อย่างเดียว)
+  var editableFields = [];
+  var lockedFields   = []; // ฟิลด์ที่ Section อื่นรับผิดชอบ
+
+  (form.fields || []).forEach(function(f) {
+    if (isAdminView) { editableFields.push(f); return; }
+    if (!f.sectionIds || !f.sectionIds.length) { editableFields.push(f); return; }
+    if (f.sectionIds.some(function(sid) { return _userSecs.indexOf(sid) >= 0; })) {
+      editableFields.push(f); // Section นี้มีสิทธิ์กรอก
+    } else {
+      lockedFields.push(f);   // Section อื่นรับผิดชอบ — แสดงอ่านได้อย่างเดียว
+    }
   });
+  // compat alias ให้ส่วนอื่นที่ยังใช้ visibleFields
+  var visibleFields = editableFields;
+
+  // ── Locked fields: ฟิลด์ที่ Section อื่นรับผิดชอบ — แสดงอ่านได้เท่านั้น ──
+  var lockedHtml = '';
+  if (!isAdminView && lockedFields.length > 0) {
+    // รวมข้อมูลจาก dashMap ของทุก Section ที่เป็นเจ้าของ locked field
+    var lockedData = {};
+    lockedFields.forEach(function(lf) {
+      (lf.sectionIds || []).forEach(function(ownerSid) {
+        var dashRow = dashMap && dashMap[ownerSid];
+        if (dashRow && dashRow.dataJson) {
+          try {
+            var parsed = (typeof dashRow.dataJson === 'string')
+              ? JSON.parse(dashRow.dataJson) : dashRow.dataJson;
+            Object.keys(parsed).forEach(function(k) {
+              if (!(k in lockedData)) lockedData[k] = parsed[k];
+            });
+          } catch(e) {}
+        }
+      });
+    });
+
+    var lockedInner = lockedFields.map(function(lf) {
+      // หา section names ของเจ้าของฟิลด์นี้
+      var ownerNames = (lf.sectionIds || []).map(function(sid) {
+        for (var _i = 0; _i < (APP.sections || []).length; _i++) {
+          if (APP.sections[_i].sectionId === sid) return APP.sections[_i].sectionName;
+        }
+        return sid;
+      });
+      var ownerLabel = ownerNames.length
+        ? ownerNames.map(function(n){return escHtml(n);}).join(', ')
+        : 'Section อื่น';
+      return '<div class="qa-locked-field-wrap">'
+        + '<div class="qa-locked-field-badge"><i class="bi bi-lock-fill me-1"></i>'
+        + 'รับผิดชอบโดย: ' + ownerLabel + '</div>'
+        + (typeof _renderOneFieldRO === 'function' ? _renderOneFieldRO(lf, lockedData) : '')
+        + '</div>';
+    }).join('');
+
+    lockedHtml = '<div class="qa-locked-section">'
+      + '<div class="qa-locked-section-head">'
+      + '<i class="bi bi-lock-fill me-1"></i>ข้อมูลที่ Section อื่นรับผิดชอบ (ดูได้เท่านั้น)'
+      + '</div>'
+      + lockedInner
+      + '</div>';
+  }
 
   // ── Copy bar: ดึงข้อมูลจากปีการศึกษาอื่น ────────────────────
   var copyBar = '<div id="copy-bar-'+fid+'" class="qa-copy-bar" style="display:none; align-items:center; gap:8px; padding:8px 16px; background:var(--surface-2); border-bottom:1px solid var(--border);">'
@@ -358,6 +425,7 @@ function buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecI
     + (form.note?'<div class="qa-form-card-note"><i class="bi bi-exclamation-triangle-fill" style="flex-shrink:0;"></i><span>'+nlToBr(form.note)+'</span></div>':"")
     + copyBar
     + '<div style="padding:20px;">'+renderFormFields(visibleFields)+'</div>'
+    + lockedHtml
     + '<div class="qa-form-card-foot"><div class="d-flex gap-2">'+clearBtn+copyBtn+'</div>'
     + '<div><button type="submit" class="qa-btn-primary"><i class="bi bi-save-fill me-1"></i>บันทึก '+escHtml(form.formName)+'</button></div>'
     + '</div></div></form>';

@@ -813,4 +813,50 @@ div[id$="-picker-modal"] > div {
 [data-theme="dark"] .qa-field-owner-badge.all {
   background: rgba(255,255,255,.07); color: var(--txt-muted);
 }
+
+/* ── Locked Fields Section (ฟิลด์ที่ Section อื่นรับผิดชอบ) ── */
+.qa-locked-section {
+  border-top: 2px dashed var(--border-2);
+  margin: 0 20px 0;
+  padding: 16px 0 4px;
+}
+.qa-locked-section-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: .78rem; font-weight: 700;
+  color: var(--txt-muted);
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  padding: 5px 10px;
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+}
+.qa-locked-field-wrap {
+  position: relative;
+  margin-bottom: 14px;
+  padding: 10px 12px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  opacity: .88;
+}
+.qa-locked-field-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: .68rem; font-weight: 600;
+  color: var(--txt-muted);
+  margin-bottom: 6px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--border-2);
+  border: 1px solid var(--border);
+}
+/* ทำให้ฟิลด์ใน locked wrap ดู disabled */
+.qa-locked-field-wrap .qa-input,
+.qa-locked-field-wrap textarea,
+.qa-locked-field-wrap select {
+  pointer-events: none;
+  opacity: .65;
+  background: var(--surface-3, var(--surface-2)) !important;
+}
 </style>
