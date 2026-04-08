@@ -314,10 +314,19 @@ function renderReportFormsPublic() {
 function renderPublicFormProgress() {
   var yearSel = document.getElementById("public-year-select");
   var year = yearSel ? yearSel.value : "";
-  _renderFormProgressGrid("public-form-progress-grid", year);
+  // กรอง Field เฉพาะ Section ที่ User รับผิดชอบ เพื่อให้ dashboard ตรงกับ sidebar
+  var filterSecIds = null;
+  if (APP.user && APP.user.profile && APP.user.profile.sections && APP.user.role !== "admin") {
+    filterSecIds = APP.user.profile.sections;
+    // Manager: แปลงรหัสฝ่าย (DEPT_) เป็น Section จริง
+    if (APP.user.role === "manager" && typeof resolveManagerSections === "function") {
+      filterSecIds = resolveManagerSections(filterSecIds).sectionIds;
+    }
+  }
+  _renderFormProgressGrid("public-form-progress-grid", year, filterSecIds);
 }
 
-function _renderFormProgressGrid(containerId, year) {
+function _renderFormProgressGrid(containerId, year, filterSecIds) {
   var el = document.getElementById(containerId);
   if (!el) return;
   var yearData = [];
@@ -372,6 +381,10 @@ function _renderFormProgressGrid(containerId, year) {
         var fSecs = (field.sectionIds && field.sectionIds.length)
           ? field.sectionIds.filter(function(id){ return activeSecIds.indexOf(id) >= 0; })
           : activeSecIds;
+        // ถ้ามี filterSecIds (user dashboard): เหลือเฉพาะ section ที่ user รับผิดชอบ
+        if (filterSecIds) {
+          fSecs = fSecs.filter(function(id){ return filterSecIds.indexOf(id) >= 0; });
+        }
         if (!fSecs.length) return;
         totalPoints++;
         // นับว่ากรอกแล้วหรือไม่ โดย section ใดก็ได้ที่มีสิทธิ์ (รวม GLOBAL_ fallback)
@@ -446,7 +459,7 @@ function _renderFormProgressGrid(containerId, year) {
 
     html += '<div class="qa-glass-card p-3">'
       + '<div style="font-weight:700;font-size:.9rem;color:var(--txt);margin-bottom:2px;"><i class="bi bi-file-earmark-text me-2" style="color:var(--primary);"></i>' + escHtml(form.formName) + '</div>'
-      + '<div style="font-size:.7rem;color:var(--txt-muted);margin-bottom:8px;">' + fieldCount + ' ฟิลด์ | ' + subInfo + '</div>'
+      + '<div style="font-size:.7rem;color:var(--txt-muted);margin-bottom:8px;">' + totalPoints + ' ฟิลด์ | ' + subInfo + '</div>'
       + '<div class="progress mb-2" style="height:6px;background:var(--border-2);border-radius:3px;">'
       +   '<div class="progress-bar" style="width:' + pct + '%;background-color:' + sColor + ';"></div>'
       + '</div>'
