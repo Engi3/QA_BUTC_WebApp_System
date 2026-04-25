@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(grep:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(copy \"C:\\\\Users\\\\Assawin\\\\Desktop\\\\1. My_Project\\\\3. QA_BUTC_WebApp_System\\\\js_iqa.html\" \"C:\\\\Users\\\\Assawin\\\\Desktop\\\\1. My_Project\\\\3. QA_BUTC_WebApp_System\\\\.claude\\\\worktrees\\\\nifty-bhaskara\\\\js_iqa.html\")",
+      "Bash(copy \"C:\\\\Users\\\\Assawin\\\\Desktop\\\\1. My_Project\\\\3. QA_BUTC_WebApp_System\\\\js_render.html\" \"C:\\\\Users\\\\Assawin\\\\Desktop\\\\1. My_Project\\\\3. QA_BUTC_WebApp_System\\\\.claude\\\\worktrees\\\\nifty-bhaskara\\\\js_render.html\")",
+      "Bash(cp \"C:\\\\Users\\\\Assawin\\\\Desktop\\\\1. My_Project\\\\3. QA_BUTC_WebApp_System\\\\.claude\\\\worktrees\\\\nifty-bhaskara\\\\js_render.html\" \"C:\\\\Users\\\\Assawin\\\\Desktop\\\\1. My_Project\\\\3. QA_BUTC_WebApp_System\\\\js_render.html\")",
+      "Bash(cp \"C:\\\\Users\\\\Assawin\\\\Desktop\\\\1. My_Project\\\\3. QA_BUTC_WebApp_System\\\\.claude\\\\worktrees\\\\nifty-bhaskara\\\\js_user.html\" \"C:\\\\Users\\\\Assawin\\\\Desktop\\\\1. My_Project\\\\3. QA_BUTC_WebApp_System\\\\js_user.html\")"
     ]
   }
 }

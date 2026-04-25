@@ -11,61 +11,74 @@ function buildSectionCards(sections, yearData, containerId, year) {
     return;
   }
 
-  // รวมข้อมูลฟอร์มส่วนกลาง (GLOBAL_ key) ไว้ก่อน — ใช้ร่วมกันทุก Section
-  var sharedDataObj = {};
+  // รวม data จากทุก GLOBAL_ row เพื่อใช้คำนวณ progress ต่อ Section
+  // ทุกฟอร์มเก็บข้อมูลใน GLOBAL_formId key — SEC_ row เป็น backward compat เท่านั้น
+  var _ydMap = {};
+  yearData.forEach(function(d){ if (d.sectionId) _ydMap[d.sectionId] = d; });
   var sharedLastUpdate = null, sharedSubmitter = "";
   yearData.forEach(function(d) {
-    if (d.sectionId && d.sectionId.indexOf("GLOBAL_") === 0 && d.dataJson) {
-      // ตรวจว่าฟอร์มนี้ยังคงเป็น shared form อยู่หรือไม่
-      // ถ้าแอดมินเพิ่ง update sectionIds ให้ฟิลด์แล้ว → ฟอร์มนี้เป็น section-specific → ข้ามไป
-      var _gFormId = d.sectionId.replace("GLOBAL_", "");
-      var _gForm = null;
-      for (var _gfi=0; _gfi<(APP.forms||[]).length; _gfi++) { if (APP.forms[_gfi].formId===_gFormId) { _gForm=APP.forms[_gfi]; break; } }
-      if (_gForm && typeof _isSharedForm === 'function' && !_isSharedForm(_gForm)) return;
-      try {
-        var gd = JSON.parse(d.dataJson);
-        Object.keys(gd).forEach(function(k) { if (!(k in sharedDataObj)) sharedDataObj[k] = gd[k]; });
-      } catch(e) {}
-      if (!sharedLastUpdate && d.lastUpdate) { sharedLastUpdate = d.lastUpdate; sharedSubmitter = d.submitterName || ""; }
+    if (d.sectionId && d.sectionId.indexOf("GLOBAL_") === 0 && d.lastUpdate) {
+      if (!sharedLastUpdate) { sharedLastUpdate = d.lastUpdate; sharedSubmitter = d.submitterName || ""; }
     }
   });
-  var hasSharedData = Object.keys(sharedDataObj).some(function(k){ return !k.endsWith("__by") && !k.endsWith("__at") && !k.endsWith("_total_rows") && sharedDataObj[k] !== ""; });
+
+  // คำนวณ merged data รวมจากทุก row: SEC_ เป็น baseline, GLOBAL_ overlay ทับ (GLOBAL_ มีความสำคัญกว่า)
+  var globalMergedData = {};
+  // Step 1: merge ALL SEC_ rows (backward compat — lower priority)
+  yearData.forEach(function(d) {
+    if (!d.sectionId || d.sectionId.indexOf("GLOBAL_") === 0 || !d.dataJson) return;
+    try { var sd = JSON.parse(d.dataJson); Object.keys(sd).forEach(function(k){ if(!(k in globalMergedData)) globalMergedData[k]=sd[k]; }); } catch(e) {}
+  });
+  // Step 2: overlay ALL GLOBAL_ rows (higher priority — overwrites SEC_ data for same keys)
+  yearData.forEach(function(d) {
+    if (!d.sectionId || d.sectionId.indexOf("GLOBAL_") !== 0 || !d.dataJson) return;
+    try { var gd = JSON.parse(d.dataJson); Object.keys(gd).forEach(function(k){ globalMergedData[k]=gd[k]; }); } catch(e) {}
+  });
+  var hasSharedData = Object.keys(globalMergedData).some(function(k){ return !k.endsWith("__by") && !k.endsWith("__at") && !k.endsWith("_total_rows") && globalMergedData[k] !== ""; });
 
   var html = "";
   sections.forEach(function(sec) {
-    var sub = null;
-    for (var i = 0; i < yearData.length; i++) {
-      if (yearData[i].sectionId === sec.sectionId) { sub = yearData[i]; break; }
-    }
+    // Section card: ตรวจว่ามีข้อมูลที่บันทึกแล้วหรือไม่ (ทั้ง GLOBAL_ และ SEC_ keys)
+    var sub = _ydMap[sec.sectionId] || null;
+    // ถ้าไม่มี SEC_ row แต่มี GLOBAL_ data → ถือว่ามีข้อมูล
+    var isSub = !!sub || hasSharedData;
 
-    var isSub = !!sub;
-    var dataObj = {};
-    if (isSub && sub.dataJson) { try { dataObj = JSON.parse(sub.dataJson); } catch(e) {} }
+    // คำนวณ progress: ใช้ GLOBAL_formId key เพื่อให้ถูกต้อง
+    var _tfSum = 0, _cfSum = 0;
+    (APP.forms || []).forEach(function(form) {
+      if (!form.isActive) return;
+      // ตรวจว่า form นี้ assign ให้ section นี้หรือไม่
+      var hasField = (form.sectionId && form.sectionId === sec.sectionId)
+        || ((sec.assignedFormIDs || []).indexOf(form.formId) >= 0)
+        || (form.fields || []).some(function(f) {
+            if (!f.sectionIds || !f.sectionIds.length) return true;
+            return f.sectionIds.indexOf(sec.sectionId) >= 0;
+          });
+      if (!hasField) return;
+      var gKey = "GLOBAL_" + form.formId;
+      // ใช้ globalMergedData เสมอ (รวม SEC_ + GLOBAL_ ทุก row แล้ว) เพราะข้อมูลเก่าบางส่วนอาจอยู่ใน row อื่น
+      var gDataObj = globalMergedData;
+      var gProg = (typeof _calcFieldProgress === 'function') ? _calcFieldProgress(gKey, [form], gDataObj) : { total: 0, completed: 0 };
+      _tfSum += gProg.total;
+      _cfSum += gProg.completed;
+    });
+    var totalForms = _tfSum;
+    var completedForms = _cfSum;
+    var pct = _tfSum > 0 ? Math.round(_cfSum / _tfSum * 100) : 0;
+    if (_tfSum === 0 && isSub) pct = 100;
 
-    // ผสานข้อมูลส่วนกลางเข้ากับข้อมูล Section (Section-specific data มีความสำคัญกว่า)
-    var mergedDataObj = {};
-    Object.keys(sharedDataObj).forEach(function(k){ mergedDataObj[k] = sharedDataObj[k]; });
-    Object.keys(dataObj).forEach(function(k){ mergedDataObj[k] = dataObj[k]; });
-
-    var prog = (typeof _calcFieldProgress === 'function') ? _calcFieldProgress(sec.sectionId, APP.forms, mergedDataObj) : { total: 0, completed: 0, pct: 0 };
-    var totalForms = prog.total;
-    var completedForms = prog.completed;
-    var pct = prog.pct;
-    var hasAnyData = isSub || hasSharedData;
-    if (prog.total === 0 && hasAnyData) pct = 100;
-
-    // หา field ที่แก้ไขล่าสุดจาก __at metadata
+    // หา field ที่แก้ไขล่าสุดจาก __at metadata (ใช้ globalMergedData)
     var latestAt = null, latestBy = null;
-    Object.keys(mergedDataObj).forEach(function(k) {
+    Object.keys(globalMergedData).forEach(function(k) {
       if (!k.endsWith("__at")) return;
-      var t = mergedDataObj[k] ? new Date(mergedDataObj[k]) : null;
+      var t = globalMergedData[k] ? new Date(globalMergedData[k]) : null;
       if (t && !isNaN(t.getTime()) && (!latestAt || t > latestAt)) {
         latestAt = t;
-        latestBy = mergedDataObj[k.replace("__at", "__by")] || "";
+        latestBy = globalMergedData[k.replace("__at", "__by")] || "";
       }
     });
-    var displayBy = latestBy || (isSub ? (sub.submitterName || "-") : (hasSharedData ? sharedSubmitter||"-" : "-"));
-    var displayAt = latestAt ? latestAt.toISOString() : (isSub && sub.lastUpdate ? sub.lastUpdate : (hasSharedData ? sharedLastUpdate : null));
+    var displayBy = latestBy || (sub ? (sub.submitterName || "-") : (hasSharedData ? sharedSubmitter||"-" : "-"));
+    var displayAt = latestAt ? latestAt.toISOString() : (sub && sub.lastUpdate ? sub.lastUpdate : (hasSharedData ? sharedLastUpdate : null));
 
     var sColor = pct === 100 ? "var(--success)" : (pct > 0 ? "var(--warning)" : "var(--danger)");
     var sTxt = pct === 100 ? "ส่งข้อมูลครบถ้วน" : (pct > 0 ? "กำลังดำเนินการ ("+pct+"%)" : "ยังไม่มีข้อมูล");
@@ -100,7 +113,7 @@ function buildSectionCards(sections, yearData, containerId, year) {
          +   '<div><i class="bi bi-clock-fill me-2"></i>'+(displayAt ? toThaiDate(displayAt, true) : "-")+'</div>'
          + '</div>';
 
-    if (hasAnyData) {
+    if (isSub) {
       html += '<button class="qa-btn-ghost w-100" style="font-size:0.8rem; border:1px solid var(--border);" onclick="openViewModal(\''+sec.sectionId+'\',\''+escHtml(sec.sectionName)+'\',\''+year+'\')"><i class="bi bi-search me-1"></i> ดูข้อมูล</button>';
     } else {
       html += '<button class="qa-btn-ghost w-100" style="font-size:0.8rem; opacity:0.5; cursor:not-allowed;" disabled><i class="bi bi-lock-fill me-1"></i> รอข้อมูล</button>';
@@ -118,10 +131,8 @@ function buildSectionCards(sections, yearData, containerId, year) {
 // ตรวจว่าฟอร์มนี้เป็น "ฟอร์มส่วนกลาง" หรือไม่
 // ส่วนกลาง = ทุก field ไม่ได้จำกัด sectionIds (visible to all) → 1 ฟอร์ม ต่อ 1 ปี ไม่ใช่ต่อ Section
 function _isSharedForm(form) {
-  if (form.sectionId) return false; // form-level section assignment → section-specific
-  var fields = (form.fields || []).filter(function(f){ return f.type !== "divider"; });
-  if (!fields.length) return true;
-  return fields.every(function(f){ return !f.sectionIds || !f.sectionIds.length; });
+  // ทุกฟอร์มเก็บข้อมูลแบบ GLOBAL — field.sectionIds เป็นเพียงกำหนดสิทธิ์กรอก ไม่ใช่แยก submission
+  return true;
 }
 
 function loadUserSections() {
@@ -200,6 +211,35 @@ function loadUserSections() {
   var dashMap = {};
   yearData.forEach(function(d) { dashMap[d.sectionId] = d; });
 
+  // ── Data Merge: รวม SEC_ + GLOBAL_ ทุก row สำหรับแต่ละ form ──────────────
+  // ข้อมูลเก่า (SEC_ key) และข้อมูลใหม่ (GLOBAL_ key) อาจอยู่คนละ row หรือใน row เดียวกัน
+  // ต้องรวมทั้งหมดเพื่อให้ข้อมูลครบถ้วน — SEC_ เป็น baseline, GLOBAL_ overlay ทับ
+  (APP.forms || []).forEach(function(form) {
+    if (!form.isActive) return;
+    var gKey = "GLOBAL_" + form.formId;
+    // Step 1: merge ALL SEC_ rows (backward compat — lower priority)
+    var mergedData = {};
+    yearData.forEach(function(d) {
+      if (!d.sectionId || d.sectionId.indexOf("GLOBAL_") === 0 || !d.dataJson) return;
+      try { var sd = JSON.parse(d.dataJson); Object.keys(sd).forEach(function(k){ if(!(k in mergedData)) mergedData[k]=sd[k]; }); } catch(e) {}
+    });
+    // Step 2: overlay ALL GLOBAL_ rows (higher priority)
+    yearData.forEach(function(d) {
+      if (!d.sectionId || d.sectionId.indexOf("GLOBAL_") !== 0 || !d.dataJson) return;
+      try { var gd = JSON.parse(d.dataJson); Object.keys(gd).forEach(function(k){ mergedData[k]=gd[k]; }); } catch(e) {}
+    });
+    if (Object.keys(mergedData).length > 0) {
+      var existingRow = dashMap[gKey];
+      dashMap[gKey] = {
+        sectionId: gKey,
+        dataJson: JSON.stringify(mergedData),
+        year: year,
+        lastUpdate: existingRow ? existingRow.lastUpdate : null,
+        submitterName: existingRow ? existingRow.submitterName : null
+      };
+    }
+  });
+
   var tabsHtml = "";
   var panesHtml = "";
   var validIndex = 0;
@@ -219,51 +259,24 @@ function loadUserSections() {
       if (!secObj) continue;
       var formLevelMatch = form.sectionId && form.sectionId === sid;
       var sectionAssigned = (secObj.assignedFormIDs || []).indexOf(form.formId) >= 0;
-      // ตรวจว่าฟอร์มนี้มีฟิลด์ที่กำหนด Section เฉพาะไว้หรือไม่
-      var formHasFieldSections = (form.fields || []).some(function(f) {
-        return f.sectionIds && f.sectionIds.length > 0;
+      var hasField = formLevelMatch || sectionAssigned || (form.fields || []).some(function(f) {
+        if (!f.sectionIds || !f.sectionIds.length) return true;
+        return f.sectionIds.indexOf(sid) >= 0;
       });
-      var hasField;
-      if (formLevelMatch || sectionAssigned) {
-        hasField = true;
-      } else if (formHasFieldSections) {
-        // ฟอร์มมี field-level sections: แสดงเฉพาะ Section ที่มีฟิลด์ที่กำหนดไว้
-        hasField = (form.fields || []).some(function(f) {
-          return f.sectionIds && f.sectionIds.indexOf(sid) >= 0;
-        });
-      } else {
-        // ไม่มี field-level sections เลย (ทุก field เปิดให้ทุก Section): แสดงกับทุก Section
-        hasField = true;
-      }
       if (hasField) { matchingSec = secObj; break; }
     }
     if (!matchingSec) return;
 
-    var isShared = _isSharedForm(form);
-    var effectiveSecId   = isShared ? ("GLOBAL_" + form.formId) : matchingSec.sectionId;
-    var effectiveSecName = isShared ? form.formName : matchingSec.sectionName;
+    var isShared = true; // ทุกฟอร์มเป็น global เสมอ
+    var effectiveSecId   = "GLOBAL_" + form.formId;
+    var effectiveSecName = form.formName;
 
     var dashRow = dashMap[effectiveSecId] || null;
     var dataObj = {};
     if (dashRow && dashRow.dataJson) { try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) {} }
-    var _sp;
-    if (typeof _calcFieldProgress === 'function') {
-      if (isShared) {
-        _sp = _calcFieldProgress(effectiveSecId, [form], dataObj);
-      } else {
-        // รวมข้อมูลจากทุก section ของ user เพื่อคำนวณ progress รวม
-        var _sidebarMerged = {};
-        var _gRow2 = dashMap["GLOBAL_" + form.formId];
-        if (_gRow2 && _gRow2.dataJson) { try { var _gd2 = JSON.parse(_gRow2.dataJson); Object.keys(_gd2).forEach(function(k){ _sidebarMerged[k] = _gd2[k]; }); } catch(e) {} }
-        userSecIds.forEach(function(sid) {
-          var _r = dashMap[sid];
-          if (_r && _r.dataJson) { try { var _d = JSON.parse(_r.dataJson); Object.keys(_d).forEach(function(k){ if (_d[k] !== "" && _d[k] !== null && _d[k] !== undefined) _sidebarMerged[k] = _d[k]; }); } catch(e) {} }
-        });
-        _sp = _calcFieldProgress(userSecIds, [form], _sidebarMerged);
-      }
-    } else {
-      _sp = { total: 0, completed: 0 };
-    }
+    var _sp = (typeof _calcFieldProgress === 'function')
+      ? _calcFieldProgress(effectiveSecId, [form], dataObj)
+      : { total: 0, completed: 0 };
     var totalFields = _sp.total;
     var completedFields = _sp.completed;
     var pct = totalFields > 0 ? Math.round(completedFields / totalFields * 100) : 0;
@@ -292,7 +305,7 @@ function loadUserSections() {
       + '</div></div></button>';
 
     panesHtml += '<div id="form-pane-' + fid + '" style="display:' + (validIndex === 0 ? 'block' : 'none') + ';">'
-      + _buildFormPaneContent(form, matchingSec, effectiveSecId, effectiveSecName, userSecIds, dashMap)
+      + _buildFormPaneContent(form, matchingSec, effectiveSecId, effectiveSecName, userSecIds)
       + '</div>';
 
     validIndex++;
@@ -330,7 +343,7 @@ function selectUserForm(formId) {
 }
 
 // ── สร้างเนื้อหาภายใน form-pane (Copy bar + Form card) ──
-function _buildFormPaneContent(form, section, effectiveSecId, effectiveSecName, userSecIds, dashMap) {
+function _buildFormPaneContent(form, section, effectiveSecId, effectiveSecName, userSecIds) {
   var fid = escHtml(form.formId);
   var sid = escHtml(effectiveSecId || section.sectionId);
 
@@ -342,11 +355,11 @@ function _buildFormPaneContent(form, section, effectiveSecId, effectiveSecName, 
     + '<i class="bi bi-clipboard-data me-1"></i> ดึงข้อมูลลงฟอร์ม</button>'
     + '</div>';
 
-  html += buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecIds, dashMap);
+  html += buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecIds);
   return html;
 }
 
-function buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecIds, dashMap) {
+function buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecIds) {
   var secId   = escHtml(effectiveSecId   || section.sectionId);
   var secName = escHtml(effectiveSecName || section.sectionName);
   var fid     = escHtml(form.formId);
@@ -355,72 +368,17 @@ function buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecI
     ? '<button type="button" class="qa-btn-danger btn-sm" onclick="promptClearSection(this,\''+secId+'\',\''+secName+'\')"><i class="bi bi-eraser-fill me-1"></i>ล้างข้อมูล</button>'
     : "";
 
-  // admin_acting_as_user และ manager เห็นและแก้ไขทุก field
+  // ── filter fields ตาม userSecIds ทั้งหมด (ไม่ใช่แค่ section แรก) ──
+  // admin_acting_as_user และ manager เห็นทุก field
   var isAdminView = APP.activeRole === "admin_acting_as_user"
     || (APP.user && APP.user.role === "manager");
   var _userSecs = userSecIds || (section ? [section.sectionId] : []);
-
-  // แยก fields เป็น: editable (มีสิทธิ์กรอก) vs locked (อ่านได้อย่างเดียว)
-  var editableFields = [];
-  var lockedFields   = []; // ฟิลด์ที่ Section อื่นรับผิดชอบ
-
-  (form.fields || []).forEach(function(f) {
-    if (isAdminView) { editableFields.push(f); return; }
-    if (!f.sectionIds || !f.sectionIds.length) { editableFields.push(f); return; }
-    if (f.sectionIds.some(function(sid) { return _userSecs.indexOf(sid) >= 0; })) {
-      editableFields.push(f); // Section นี้มีสิทธิ์กรอก
-    } else {
-      lockedFields.push(f);   // Section อื่นรับผิดชอบ — แสดงอ่านได้อย่างเดียว
-    }
+  var visibleFields = (form.fields || []).filter(function(f) {
+    if (isAdminView) return true;
+    if (!f.sectionIds || !f.sectionIds.length) return true;
+    // field visible ถ้า user มีอย่างน้อย 1 section ที่ตรงกับ field.sectionIds
+    return f.sectionIds.some(function(sid) { return _userSecs.indexOf(sid) >= 0; });
   });
-  // compat alias ให้ส่วนอื่นที่ยังใช้ visibleFields
-  var visibleFields = editableFields;
-
-  // ── Locked fields: ฟิลด์ที่ Section อื่นรับผิดชอบ — แสดงอ่านได้เท่านั้น ──
-  var lockedHtml = '';
-  if (!isAdminView && lockedFields.length > 0) {
-    // รวมข้อมูลจาก dashMap ของทุก Section ที่เป็นเจ้าของ locked field
-    var lockedData = {};
-    lockedFields.forEach(function(lf) {
-      (lf.sectionIds || []).forEach(function(ownerSid) {
-        var dashRow = dashMap && dashMap[ownerSid];
-        if (dashRow && dashRow.dataJson) {
-          try {
-            var parsed = (typeof dashRow.dataJson === 'string')
-              ? JSON.parse(dashRow.dataJson) : dashRow.dataJson;
-            Object.keys(parsed).forEach(function(k) {
-              if (!(k in lockedData)) lockedData[k] = parsed[k];
-            });
-          } catch(e) {}
-        }
-      });
-    });
-
-    var lockedInner = lockedFields.map(function(lf) {
-      // หา section names ของเจ้าของฟิลด์นี้
-      var ownerNames = (lf.sectionIds || []).map(function(sid) {
-        for (var _i = 0; _i < (APP.sections || []).length; _i++) {
-          if (APP.sections[_i].sectionId === sid) return APP.sections[_i].sectionName;
-        }
-        return sid;
-      });
-      var ownerLabel = ownerNames.length
-        ? ownerNames.map(function(n){return escHtml(n);}).join(', ')
-        : 'Section อื่น';
-      return '<div class="qa-locked-field-wrap">'
-        + '<div class="qa-locked-field-badge"><i class="bi bi-lock-fill me-1"></i>'
-        + 'รับผิดชอบโดย: ' + ownerLabel + '</div>'
-        + (typeof _renderOneFieldRO === 'function' ? _renderOneFieldRO(lf, lockedData) : '')
-        + '</div>';
-    }).join('');
-
-    lockedHtml = '<div class="qa-locked-section">'
-      + '<div class="qa-locked-section-head">'
-      + '<i class="bi bi-lock-fill me-1"></i>ข้อมูลที่ Section อื่นรับผิดชอบ (ดูได้เท่านั้น)'
-      + '</div>'
-      + lockedInner
-      + '</div>';
-  }
 
   // ── Copy bar: ดึงข้อมูลจากปีการศึกษาอื่น ────────────────────
   var copyBar = '<div id="copy-bar-'+fid+'" class="qa-copy-bar" style="display:none; align-items:center; gap:8px; padding:8px 16px; background:var(--surface-2); border-bottom:1px solid var(--border);">'
@@ -440,7 +398,6 @@ function buildFormCard(form, section, effectiveSecId, effectiveSecName, userSecI
     + (form.note?'<div class="qa-form-card-note"><i class="bi bi-exclamation-triangle-fill" style="flex-shrink:0;"></i><span>'+nlToBr(form.note)+'</span></div>':"")
     + copyBar
     + '<div style="padding:20px;">'+renderFormFields(visibleFields)+'</div>'
-    + lockedHtml
     + '<div class="qa-form-card-foot"><div class="d-flex gap-2">'+clearBtn+copyBtn+'</div>'
     + '<div><button type="submit" class="qa-btn-primary"><i class="bi bi-save-fill me-1"></i>บันทึก '+escHtml(form.formName)+'</button></div>'
     + '</div></div></form>';
@@ -531,25 +488,15 @@ function renderOneField(field) {
     case "select":
       var customId = 'custom-' + field.key;
       var si = (field.items && field.items.length) ? field.items : [];
-      var selItemsHtml = si.map(function(o){
-        var v = o.trim();
-        return '<div class="qa-cselect-item" data-value="'+escHtml(v)+'" onclick="_qaSelectPick(this)">'+escHtml(v)+'</div>';
-      }).join("");
+      var opts = '<option value="">-- เลือก --</option>' 
+               + si.map(function(o){ return '<option value="'+escHtml(o.trim())+'">'+escHtml(o.trim())+'</option>'; }).join("");
+      
       if (field.allowCustom) {
-        selItemsHtml += '<div class="qa-cselect-item" data-value="__custom__" onclick="_qaSelectPick(this)">-- กำหนดเอง --</div>';
+        opts += '<option value="__custom__">-- กำหนดเอง (ระบุระบุรายละเอียดด้านล่าง) --</option>';
       }
+
       return '<div class="mb-3">'+lbl+desc
-        +'<div class="qa-cselect" data-custom-id="'+customId+'"'+(field.required?' data-required="1"':'')+' data-fname="'+escHtml(field.key)+'">'
-        +'<input type="hidden" name="'+escHtml(field.key)+'" value="">'
-        +'<button type="button" class="qa-cselect-btn" onclick="_qaSelectOpen(this)">'
-        +'<span class="qa-cselect-val placeholder">-- เลือก --</span>'
-        +'<i class="bi bi-chevron-down qa-cselect-arrow"></i>'
-        +'</button>'
-        +'<div class="qa-cselect-dropdown">'
-        +'<div class="qa-cselect-item placeholder-item" data-value="" onclick="_qaSelectPick(this)">-- เลือก --</div>'
-        +selItemsHtml
-        +'</div>'
-        +'</div>'
+        +'<select class="qa-input" name="'+escHtml(field.key)+'" onchange="_onSelectCustomChange(this,\''+customId+'\')"'+(field.required?" required":"")+'>'+opts+'</select>'
         +(field.allowCustom ? '<textarea id="'+customId+'" name="'+escHtml(field.key)+'_custom" class="qa-input mt-2 auto-expand" placeholder="ระบุรายละเอียดเพิ่มเติม..." style="display:none; min-height:38px; resize:vertical;" oninput="autoExpand(this)"></textarea>' : '')
         +'</div>';
     case "radio":
@@ -655,7 +602,7 @@ function _preExpandTableRows(container, dataObj) {
       if (m) maxRi = Math.max(maxRi, parseInt(m[1], 10));
     });
     var curRows = parseInt(rowsEl.value, 10) || 1;
-    if (maxRi < curRows) return; // no extra rows needed
+    if (maxRi < curRows) return;
     var colCount = container.querySelectorAll('[name^="' + fieldKey + '_col"][name$="_0"]').length || 1;
     for (var ri = curRows; ri <= maxRi; ri++) {
       addDynRow(fieldKey, colCount);
@@ -731,9 +678,8 @@ function _fillAllFormsWithCurrentData(dashMap) {
     if (!dashRow || !dashRow.dataJson) return;
     var dataObj = {};
     try { dataObj = JSON.parse(dashRow.dataJson); } catch(e) { return; }
-    _preExpandTableRows(formEl, dataObj); // create missing dynamic rows before filling
+    _preExpandTableRows(formEl, dataObj);
     fillFormData(formEl, dataObj);
-    _refreshQaSelects(formEl); // sync custom select displays after fillFormData (el.value= ไม่ fire events)
     // Re-trigger auto-sum for all table fields (fillFormData ใช้ el.value= ไม่ fire oninput)
     formEl.querySelectorAll('[name$="_table_def"]').forEach(function(metaEl) {
       var fkey = metaEl.name.replace(/_table_def$/, "");
@@ -983,9 +929,8 @@ function copySectionData(sectionId, formId) {
         var paneId = formId ? "form-pane-" + formId : "sec-pane-" + sectionId;
         var pane = document.getElementById(paneId);
         if (pane) {
-          _preExpandTableRows(pane, res.data); // create missing dynamic rows before filling
+          _preExpandTableRows(pane, res.data);
           fillFormData(pane, res.data);
-          _refreshQaSelects(pane); // sync custom select displays after fillFormData (el.value= ไม่ fire events)
           showToast("ดึงข้อมูลปี " + targetYear + " ลงฟอร์มสำเร็จ! (แก้ไขและกดบันทึกได้เลย)", "success");
         }
       } else {

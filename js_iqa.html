@@ -391,11 +391,11 @@ function iqaSaveSchema() {
 // containerIdParam: id ของ container ที่จะวาด IQA view
 // ════════════════════════════════════════════════════════════
 function renderIqaPublicView(containerIdParam) {
-  // หา year จาก select ต่างๆ ที่มีในหน้า
+  // หา year จาก select ต่างๆ ที่มีในหน้า (รวม user-year-select สำหรับ user view)
   var year = "";
-  ["public-year-select","mgr-year-select","admin-year-select"].forEach(function(sid){
+  ["public-year-select","user-year-select","mgr-year-select","admin-year-select"].forEach(function(sid){
     var el = document.getElementById(sid);
-    if (el && el.value && !year) year = el.value;
+    if (el && el.value && !year) year = (el.value||"").replace(" (Admin Mode)","").trim();
   });
 
   var cid = containerIdParam || "iqa-view-content";
@@ -446,12 +446,14 @@ function iqaPubSelectPhaseByIdx(targetIdx, cid) {
 // ลำดับ priority: form.sectionId → shared (GLOBAL_) → field.sectionIds → assignedFormIDs → first active
 function _iqaResolveSecId(formObj, fieldKey) {
   if (!formObj) return "";
-  // form-level section assignment
-  if (formObj.sectionId) return formObj.sectionId;
-  // ฟอร์มส่วนกลาง → ข้อมูลอยู่ใน GLOBAL_ key
+  // ✅ ตรวจ shared form ก่อน — ทุกฟอร์มเก็บข้อมูลแบบ GLOBAL_ key
+  // (field.sectionIds เป็นแค่สิทธิ์กรอก ไม่ใช่แยก submission)
+  // ต้องตรวจก่อน formObj.sectionId เพราะ form object มี sectionId แต่ data อยู่ใน GLOBAL_
   if (typeof _isSharedForm === 'function' && _isSharedForm(formObj)) {
     return "GLOBAL_" + formObj.formId;
   }
+  // form-level section assignment (เฉพาะกรณีที่ไม่ใช่ shared form)
+  if (formObj.sectionId) return formObj.sectionId;
   // field-level sectionIds
   if (fieldKey) {
     var fld = null;
@@ -551,9 +553,9 @@ function _buildIqaPubAccordions(pages, year, prefix) {
           // ── map ทั้ง Form (fieldKey = "") → แสดงทุก field ────
           // เหตุผล: Admin เลือกแค่ Form โดยไม่ระบุ field → ต้องแสดงทุก field ของ Form นั้น
           var visFields = (formObj ? formObj.fields||[] : []).filter(function(fld){
-            // ไม่นับ divider, image, toggle-group, checkbox-group, tick-grid (multi-select ไม่นับ progress)
-            return fld.label && fld.type !== "divider" && fld.type !== "image"
-              && fld.type !== "toggle-group" && fld.type !== "checkbox-group" && fld.type !== "tick-grid";
+            // แสดงทุก field ที่มี label ยกเว้น divider และ image (ไม่มีข้อมูลผู้ใช้)
+            // toggle-group, checkbox-group, tick-grid มีข้อมูลจริงและ _getFieldValue รองรับ → แสดงด้วย
+            return fld.label && fld.type !== "divider" && fld.type !== "image";
           });
 
           if (!visFields.length) {
@@ -601,7 +603,10 @@ function _buildIqaPubAccordions(pages, year, prefix) {
         var fieldKey = mapVal.fieldKey || "";
         var secId    = "";
         var formObj  = formId ? (APP.forms||[]).find(function(f){return f.formId===formId;}) : null;
-        if (formObj && formObj.sectionId) {
+        // ✅ ตรวจ shared form ก่อน (เหมือน _iqaResolveSecId) — ทุกฟอร์มเก็บแบบ GLOBAL_
+        if (formObj && typeof _isSharedForm === 'function' && _isSharedForm(formObj)) {
+          secId = "GLOBAL_" + formId;
+        } else if (formObj && formObj.sectionId) {
           secId = formObj.sectionId;
         } else if (formObj && fieldKey) {
           var fldDef = (formObj.fields||[]).find(function(ff){return ff.key===fieldKey;});
@@ -629,8 +634,8 @@ function _buildIqaPubAccordions(pages, year, prefix) {
         } else if (formId) {
           // legacy whole-form: นับ field ต่อ field เหมือน new format
           var legFields = (formObj ? formObj.fields||[] : []).filter(function(fld){
-            return fld.label && fld.type !== "divider" && fld.type !== "image"
-              && fld.type !== "toggle-group" && fld.type !== "checkbox-group" && fld.type !== "tick-grid";
+            // แสดงทุก field ที่มี label ยกเว้น divider และ image (ไม่มีข้อมูลผู้ใช้)
+            return fld.label && fld.type !== "divider" && fld.type !== "image";
           });
           var legCount = legFields.length || 1;
           mappedCount += legCount;

@@ -1668,21 +1668,13 @@ function runAllMaintenance(btn) {
 // DOC TRACKING ADMIN
 // ══════════════════════════════════════════════════════════
 
-var _dtData = null;       // template (structure only, no checked)
-var _dtYear = "";         // currently selected year for progress
-var _dtProgress = {};     // cache: { "year": { statusId: bool } }
+var _dtData = null;       // template with checked state embedded
 var _dtCollapsed = {};    // { groupId: bool } for collapse/expand state
 
 function _dtInit() {
   if (_dtData) return;
   var src = APP.docTracking || { groups: [] };
   _dtData = JSON.parse(JSON.stringify(src));
-  // Migrate: strip old 'checked' from template (old data had checked embedded)
-  (_dtData.groups||[]).forEach(function(g){
-    (g.items||[]).forEach(function(it){
-      (it.statuses||[]).forEach(function(s){ delete s.checked; });
-    });
-  });
 }
 
 function _dtUid() {
@@ -1691,52 +1683,11 @@ function _dtUid() {
 
 function renderDocTrackingAdmin() {
   _dtData = null; _dtInit();
-  // Default year: last open year, or last year in settings
-  if (!_dtYear) {
-    var settings = APP.settings || [];
-    var open = settings.filter(function(s){ return s.isOpen; });
-    _dtYear = open.length ? String(open[open.length-1].year)
-            : settings.length ? String(settings[settings.length-1].year) : "";
-  }
-  // Populate year selector
-  var ySel = document.getElementById("dt-year-select");
-  if (ySel && ySel.options.length === 0) {
-    (APP.settings||[]).forEach(function(s){
-      ySel.add(new Option((s.isOpen?"★ ":"")+"ปีการศึกษา "+s.year, String(s.year)));
-    });
-  }
-  if (ySel) ySel.value = _dtYear;
-  // Render structure immediately (progress may be empty until GAS call returns)
   _dtRender();
-  // Load progress asynchronously and re-render when done
-  if (_dtYear && _dtProgress[_dtYear] === undefined) {
-    google.script.run
-      .withSuccessHandler(function(res) {
-        _dtProgress[_dtYear] = (res && res.data) ? res.data : {};
-        _dtRender();
-      })
-      .withFailureHandler(function() { _dtProgress[_dtYear] = {}; })
-      .getDocTrackingProgress(_dtYear);
-  }
 }
 
-function _dtOnYearChange(year) {
-  _dtYear = year;
-  _dtRender(); // show structure immediately with cached/empty progress
-  if (_dtProgress[year] === undefined) {
-    google.script.run
-      .withSuccessHandler(function(res) {
-        _dtProgress[year] = (res && res.data) ? res.data : {};
-        _dtRender();
-      })
-      .withFailureHandler(function() { _dtProgress[year] = {}; })
-      .getDocTrackingProgress(year);
-  }
-}
-
-function _dtGetChecked(statusId) {
-  var prog = _dtProgress[_dtYear] || {};
-  return !!prog[statusId];
+function _dtGetChecked(s) {
+  return !!s.checked;
 }
 
 function _dtToggleCollapse(groupId) {
@@ -1758,7 +1709,7 @@ function _dtRender() {
     var isCollapsed = !!_dtCollapsed[gId];
     var gTotal = 0, gDone = 0;
     (g.items || []).forEach(function(it) {
-      (it.statuses || []).forEach(function(s) { gTotal++; if (_dtGetChecked(s.statusId)) gDone++; });
+      (it.statuses || []).forEach(function(s) { gTotal++; if (_dtGetChecked(s)) gDone++; });
     });
     var gPct = gTotal > 0 ? Math.round(gDone / gTotal * 100) : 0;
     var gColor = gPct >= 100 ? "#059669" : gPct >= 50 ? "#2563eb" : "#f59e0b";
@@ -1776,7 +1727,7 @@ function _dtRender() {
 
     (g.items || []).forEach(function(it, ii) {
       var itTotal = (it.statuses || []).length;
-      var itDone  = (it.statuses || []).filter(function(s){ return _dtGetChecked(s.statusId); }).length;
+      var itDone  = (it.statuses || []).filter(function(s){ return _dtGetChecked(s); }).length;
 
       html += '<div style="background:var(--surface-1,var(--surface));border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:8px;">'
         + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'
@@ -1788,7 +1739,7 @@ function _dtRender() {
         + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">';
 
       (it.statuses || []).forEach(function(s, si) {
-        var chk = _dtGetChecked(s.statusId);
+        var chk = _dtGetChecked(s);
         html += '<div style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:20px;border:1.5px solid '
           + (chk ? '#16a34a' : 'var(--border)') + ';background:' + (chk ? '#dcfce7' : 'var(--surface-2)') + ';">'
           + '<input type="checkbox" '+(chk?'checked':'')+' onchange="_dtToggleStatus('+gi+','+ii+','+si+',this.checked)" style="cursor:pointer;accent-color:#16a34a;">'
@@ -1831,11 +1782,9 @@ function _dtToggleStatus(gi, ii, si, checked) {
   _dtInit();
   var st = ((_dtData.groups[gi]||{}).items||[])[ii];
   if (!st || !st.statuses || !st.statuses[si]) return;
-  var statusId = st.statuses[si].statusId;
-  if (!_dtProgress[_dtYear]) _dtProgress[_dtYear] = {};
-  _dtProgress[_dtYear][statusId] = !!checked;
+  st.statuses[si].checked = !!checked;
   _dtRender();
-  _dtSaveProgress();
+  _dtSave();
 }
 function _dtAddGroup() {
   _dtInit();
@@ -1877,14 +1826,6 @@ function _dtDeleteStatus(gi, ii, si) {
   var name = (item && item.statuses && item.statuses[si] && item.statuses[si].label) || "(ไม่มีชื่อ)";
   openDeleteConfirm("dt-status", gi + ":" + ii + ":" + si, name);
 }
-function _dtSaveProgress() {
-  if (!_dtYear) return;
-  var prog = _dtProgress[_dtYear] || {};
-  google.script.run
-    .withSuccessHandler(function(){})
-    .withFailureHandler(function(err){ showToast("บันทึกไม่สำเร็จ: "+(err.message||err), "danger"); })
-    .saveDocTrackingProgress(_dtYear, JSON.stringify(prog));
-}
 function _dtSave() {
   _dtInit();
   var el = document.getElementById("dt-admin-container");
@@ -1893,30 +1834,23 @@ function _dtSave() {
       inp.dispatchEvent(new Event("change"));
     });
   }
-  // Clone and strip checked before saving template
-  var templateData = JSON.parse(JSON.stringify(_dtData));
-  (templateData.groups||[]).forEach(function(g){
-    (g.items||[]).forEach(function(it){
-      (it.statuses||[]).forEach(function(s){ delete s.checked; });
-    });
-  });
   var btn = document.querySelector("#tab-doc-tracking .qa-btn-primary");
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>กำลังบันทึก...'; }
   google.script.run
     .withSuccessHandler(function(res) {
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึกโครงสร้าง'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึก'; }
       if (res && res.success) {
         APP.docTracking = JSON.parse(JSON.stringify(_dtData));
-        showToast("บันทึกโครงสร้างสำเร็จ", "success");
+        showToast("บันทึกสำเร็จ", "success");
       } else {
         showToast((res && res.message) || "บันทึกไม่สำเร็จ", "danger");
       }
     })
     .withFailureHandler(function(err) {
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึกโครงสร้าง'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-save-fill me-1"></i>บันทึก'; }
       showToast(err.message || err, "danger");
     })
-    .saveDocTracking(JSON.stringify(templateData));
+    .saveDocTracking(JSON.stringify(_dtData));
 }
 
 </script>

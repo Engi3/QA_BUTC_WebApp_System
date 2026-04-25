@@ -1486,46 +1486,6 @@ function saveDocTracking(jsonStr) {
   }
 }
 
-function getDocTrackingProgress(year) {
-  try {
-    const sh = ensureSheetExists("tb_theme");
-    const data = sh.getDataRange().getValues();
-    const key = "doc_tracking_" + String(year);
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][0]) === key) {
-        try { return { success: true, data: JSON.parse(data[i][1] || '{}') }; }
-        catch(e) { return { success: true, data: {} }; }
-      }
-    }
-    return { success: true, data: {} };
-  } catch(e) {
-    return { success: false, data: {}, message: e.toString() };
-  }
-}
-
-function saveDocTrackingProgress(year, jsonStr) {
-  try {
-    _clearAppCache();
-    const adminEmail = Session.getActiveUser().getEmail();
-    const sh = ensureSheetExists("tb_theme");
-    const data = sh.getDataRange().getValues();
-    const key = "doc_tracking_" + String(year);
-    const val = (typeof jsonStr === "string") ? jsonStr : JSON.stringify(jsonStr);
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][0]) === key) {
-        sh.getRange(i + 1, 1, 1, 4).setValues([[key, val, new Date(), adminEmail]]);
-        writeAuditLog(adminEmail, "SAVE_DOC_TRACKING_PROGRESS", key, "updated");
-        return { success: true };
-      }
-    }
-    sh.appendRow([key, val, new Date(), adminEmail]);
-    writeAuditLog(adminEmail, "SAVE_DOC_TRACKING_PROGRESS", key, "created");
-    return { success: true };
-  } catch(e) {
-    return { success: false, message: e.toString() };
-  }
-}
-
 function getVisitStats() {
   try {
     const sh = ensureSheetExists("tb_visits");
